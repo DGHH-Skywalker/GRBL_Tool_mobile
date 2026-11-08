@@ -1,0 +1,42 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore GRBL.Tool.Mobile.Core.slnx --locked-mode
+      - run: dotnet test GRBL.Tool.Mobile.Core.slnx -c Release --no-restore --logger trx --results-directory artifacts/tests
+      - run: dotnet run --project tools/LaserMobile.GrblSimulator -c Release --no-restore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: artifacts/tests
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - run: dotnet workload restore GRBL.Tool.Mobile.slnx
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - run: dotnet restore GRBL.Tool.Mobile.slnx --locked-mode
+      - run: dotnet build src/LaserMobile.Android -c Release --no-restore -p:AndroidSdkDirectory=$ANDROID_HOME -p:JavaSdkDirectory=$JAVA_HOME
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: src/LaserMobile.Android/bin/Release/**/*.apk

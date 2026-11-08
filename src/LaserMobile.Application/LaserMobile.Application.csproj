@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><ProjectReference Include="../LaserMobile.Domain/LaserMobile.Domain.csproj" /><ProjectReference Include="../LaserMobile.Grbl/LaserMobile.Grbl.csproj" /></ItemGroup></Project>

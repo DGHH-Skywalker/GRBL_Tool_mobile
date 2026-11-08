@@ -1,0 +1,18 @@
+# 开源优先复用矩阵
+
+| 能力 | 项目 | 当前决定 | 本轮证据 |
+|---|---|---|---|
+| USB | anotherlab/UsbSerialForAndroid 2.0.1 | 已引入 Android；扫描采用公开 API | 实际 NuGet restore 与 Android 编译检查 |
+| 绘图 | SkiaSharp.Views 3.119.1 | 已引入，SKCanvasView 预览 | Android 依赖锁与编译检查 |
+| 存储 | Microsoft.Data.Sqlite 10.0.14 | 已接入 | 临时 SQLite 重启恢复测试 |
+| 测试 | xUnit 2.9.3 | 已接入 | 核心测试实际执行 |
+| 光栅/CAM | LaserGRBL | 下一里程碑逐模块抽取 | 已有源码调查；尚未引入源码 |
+| SVG 预览 | Svg.Skia | SVG 阶段接入 | 先建立兼容版本最小验证 |
+| 几何 | Clipper2 C# | 固定 C# 版本后接入 | 原仓库归档、维护交接已记录 |
+| GRBL 能力 | ioSender | 纯逻辑参考 | 桌面依赖需抽离 |
+| 移动流程 | LaserGRBL Mobile bb9ed4b | 界面和测试参考 | 自建发送器验证状态语义 |
+| 流控 | grblcontroller/GRBL 文档 | 字符计数阶段参考 | 本轮先实现可测逐行模式 |
+
+发送器属于本产品的任务状态集成层，采用 GRBL 公开协议独立实现。采用独立实现的原因：需要统一的显式完成屏障、控制器确认暂停、无重放超时和服务所有权；不复制上游 UI 生命周期及 Windows 耦合。
+
+禁止未评估就重写成熟 USB、图像渲染或几何库。新增替代库时提交接入结果与 ADR。

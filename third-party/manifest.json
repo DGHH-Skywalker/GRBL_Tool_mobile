@@ -1,0 +1,24 @@
+{
+  "projectLicense": "GPL-3.0-or-later",
+  "copiedUpstreamSource": [],
+  "dependencies": [
+    {
+      "name": "UsbSerialForAndroid",
+      "version": "2.0.1",
+      "license": "MIT",
+      "usage": "Android USB discovery"
+    },
+    {
+      "name": "SkiaSharp.Views",
+      "version": "3.119.1",
+      "license": "MIT",
+      "usage": "Android preview"
+    },
+    {
+      "name": "Microsoft.Data.Sqlite",
+      "version": "10.0.14",
+      "license": "MIT",
+      "usage": "execution persistence"
+    }
+  ]
+}

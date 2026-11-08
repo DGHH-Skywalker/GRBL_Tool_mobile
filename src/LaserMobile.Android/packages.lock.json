@@ -1,0 +1,71 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0-android36.0": {
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "YlTamXppEQls6DYWt7RdUuwWDb0lyw/vXCaGeQpLCpsLmfwGuCkOz/vIGgMTV7ECsJcavkCOkxZXv9s8rdAHkQ=="
+      },
+      "SkiaSharp.Views": {
+        "type": "Direct",
+        "requested": "[3.119.1, )",
+        "resolved": "3.119.1",
+        "contentHash": "k+NOrmPTnkOLZtCdQhfB22V6kjCYMCErUQK35VD4o8JAMLbUVFA3p3ogfRCo36mel18XBKFdEymgiaQ52wFG9w==",
+        "dependencies": {
+          "SkiaSharp": "3.119.1"
+        }
+      },
+      "UsbSerialForAndroid": {
+        "type": "Direct",
+        "requested": "[2.0.1, )",
+        "resolved": "2.0.1",
+        "contentHash": "jRJjlwTgTiaErq7jXzt/EHJvs7ukwoW6Z067UeooDnCjlhr/3obgCIydU0+s4n9YtiRY+lBCLRF63NoM47BuhQ=="
+      },
+      "SkiaSharp": {
+        "type": "Transitive",
+        "resolved": "3.119.1",
+        "contentHash": "+Ru1BTSZQne3Vp+vbSb50Ke3Nlc3ZnItxx4+751J9WZ8YzLKAV/n+9DAo4zFTyeCI//ueT63c+VybmTTpYBEiw==",
+        "dependencies": {
+          "SkiaSharp.NativeAssets.Android": "3.119.1"
+        }
+      },
+      "SkiaSharp.NativeAssets.Android": {
+        "type": "Transitive",
+        "resolved": "3.119.1",
+        "contentHash": "b66ENYiCJEgbnwx9WoxTYMgoxL7LLQ8sfmlsTRr+ZLx1hyzATuHtiU2mcwf1jkrD7h4lN/jVysEoAzRFWDstPQ=="
+      },
+      "lasermobile.application": {
+        "type": "Project",
+        "dependencies": {
+          "LaserMobile.Domain": "[1.0.0, )",
+          "LaserMobile.Grbl": "[1.0.0, )"
+        }
+      },
+      "lasermobile.domain": {
+        "type": "Project"
+      },
+      "lasermobile.grbl": {
+        "type": "Project",
+        "dependencies": {
+          "LaserMobile.Domain": "[1.0.0, )"
+        }
+      }
+    },
+    "net10.0-android36.0/android-arm64": {
+      "SkiaSharp.NativeAssets.Android": {
+        "type": "Transitive",
+        "resolved": "3.119.1",
+        "contentHash": "b66ENYiCJEgbnwx9WoxTYMgoxL7LLQ8sfmlsTRr+ZLx1hyzATuHtiU2mcwf1jkrD7h4lN/jVysEoAzRFWDstPQ=="
+      }
+    },
+    "net10.0-android36.0/android-x64": {
+      "SkiaSharp.NativeAssets.Android": {
+        "type": "Transitive",
+        "resolved": "3.119.1",
+        "contentHash": "b66ENYiCJEgbnwx9WoxTYMgoxL7LLQ8sfmlsTRr+ZLx1hyzATuHtiU2mcwf1jkrD7h4lN/jVysEoAzRFWDstPQ=="
+      }
+    }
+  }
+}

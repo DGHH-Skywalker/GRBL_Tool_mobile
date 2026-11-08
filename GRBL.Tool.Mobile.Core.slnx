@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LaserMobile.Application/LaserMobile.Application.csproj" />
+    <Project Path="src/LaserMobile.Domain/LaserMobile.Domain.csproj" />
+    <Project Path="src/LaserMobile.Extensions.Abstractions/LaserMobile.Extensions.Abstractions.csproj" />
+    <Project Path="src/LaserMobile.Extensions.StandardGrbl/LaserMobile.Extensions.StandardGrbl.csproj" />
+    <Project Path="src/LaserMobile.Extensions.Xingguang/LaserMobile.Extensions.Xingguang.csproj" />
+    <Project Path="src/LaserMobile.Grbl/LaserMobile.Grbl.csproj" />
+    <Project Path="src/LaserMobile.Persistence/LaserMobile.Persistence.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LaserMobile.Core.Tests/LaserMobile.Core.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/LaserMobile.GrblSimulator/LaserMobile.GrblSimulator.csproj" />
+  </Folder>
+</Solution>
