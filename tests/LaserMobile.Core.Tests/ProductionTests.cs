@@ -94,6 +94,8 @@ public sealed class ProductionTests
                 await transport.Input.Writer.WriteAsync("[VER:1.1h]\nok\n"u8.ToArray());
                 await Wait(()=>transport.Writes.Contains("$$\n"));
                 await transport.Input.Writer.WriteAsync("$30=1000\n$32=1\nok\n"u8.ToArray());
+                await Wait(()=>transport.Writes.Contains("$G\n"));
+                await transport.Input.Writer.WriteAsync("[GC: G0 G54 G17 G21 G90 G94 M5]\nok\n"u8.ToArray());
                 await Wait(()=>session.Snapshot.MaxPower==1000 && session.Snapshot.LaserMode);
                 transport.Input.Writer.TryComplete(new IOException("detached"));
                 await Wait(()=>session.Snapshot.Connection=="Lost");

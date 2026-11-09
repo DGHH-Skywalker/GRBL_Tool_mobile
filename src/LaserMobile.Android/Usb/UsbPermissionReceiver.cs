@@ -22,7 +22,7 @@ public sealed class UsbPermissionReceiver : BroadcastReceiver
         try
         {
             using var intent = new Intent(activity, typeof(UsbPermissionReceiver)); intent.SetAction(Action); intent.PutExtra("deviceId", device.DeviceId);
-            using var pending = PendingIntent.GetBroadcast(activity, device.DeviceId, intent, PendingIntentFlags.Mutable | PendingIntentFlags.UpdateCurrent)!;
+            using var pending = PendingIntent.GetBroadcast(activity, device.DeviceId, intent, (OperatingSystem.IsAndroidVersionAtLeast(31) ? PendingIntentFlags.Mutable : 0) | PendingIntentFlags.UpdateCurrent)!;
             manager.RequestPermission(device, pending);
             return await completion.Task.WaitAsync(TimeSpan.FromSeconds(60));
         }

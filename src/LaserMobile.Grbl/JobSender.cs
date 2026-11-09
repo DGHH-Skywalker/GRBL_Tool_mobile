@@ -93,7 +93,7 @@ public sealed class JobSender
     }
     public void Resume(DateTimeOffset now)
     {
-        if (State is not (ExecutionState.Paused or ExecutionState.Pausing)) throw new InvalidOperationException("Controller has not confirmed hold.");
+        if (State != ExecutionState.Paused) throw new InvalidOperationException("Controller has not confirmed hold.");
         output.Enqueue("~"); State = sent == job.Lines.Count ? ExecutionState.Draining : ExecutionState.Running;
         deadline = now + acknowledgementTimeout;
         SendNext(now);

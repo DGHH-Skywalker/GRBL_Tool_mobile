@@ -25,7 +25,7 @@ public sealed class DeviceSession : IAsyncDisposable
     private string? error, pending;
     private DateTimeOffset lastStatus = DateTimeOffset.MinValue, commandDeadline, cancelDeadline;
     private double? maxPower;
-    private bool laserMode, disposed, running;
+    private bool laserMode, disposed, running, homing, standardFrame;
     private long epoch, sequence;
     private string? savedExecution;
     private SessionSnapshot snapshot;
@@ -57,7 +57,7 @@ public sealed class DeviceSession : IAsyncDisposable
                         AddLog("< " + response);
                         if (response is Welcome welcome)
                         {
-                            epoch++; firmware = welcome.Text; pending = null; management.Clear(); maxPower = null; laserMode = false;
+                            epoch++; firmware = welcome.Text; pending = null; management.Clear(); maxPower = null; laserMode = false; homing = false; standardFrame = false;
                             if (sender is { IsTerminal: false }) sender.Receive(response, Now);
                         }
                         if (response is Message message)
@@ -65,6 +65,12 @@ public sealed class DeviceSession : IAsyncDisposable
                             if (message.Text.StartsWith("[VER:1.1", StringComparison.Ordinal)) firmware = "Grbl 1.1 " + message.Text;
                             if (message.Text.StartsWith("$30=", StringComparison.Ordinal) && double.TryParse(message.Text.AsSpan(4), CultureInfo.InvariantCulture, out var p)) maxPower = p;
                             if (message.Text.StartsWith("$32=", StringComparison.Ordinal)) laserMode = message.Text[4..] == "1";
+                            if (message.Text.StartsWith("$22=", StringComparison.Ordinal)) homing = message.Text[4..] == "1";
+                            if (message.Text.StartsWith("[GC:", StringComparison.Ordinal))
+                            {
+                                var modes = message.Text.Trim('[', ']').Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                                standardFrame = modes.Contains("G54") && modes.Contains("G17") && modes.Contains("G94");
+                            }
                         }
                         if (response is Status status)
                         {
@@ -115,14 +121,27 @@ public sealed class DeviceSession : IAsyncDisposable
         catch (Exception) when (stop.IsCancellationRequested) { }
         catch (Exception e) { await Fail(e.Message); }
     }
-    private void RequireIdle()
+    private void RequireIdle(bool allowAlarm = false)
     {
-        if (connection != "Connected" || machine != "Idle" || Now - lastStatus > TimeSpan.FromSeconds(2)) throw new InvalidOperationException("需要最新的设备 Idle 状态");
+        if (connection != "Connected" || (machine != "Idle" && !(allowAlarm && machine == "Alarm")) || Now - lastStatus > TimeSpan.FromSeconds(2)) throw new InvalidOperationException("需要最新的设备 Idle 状态");
         if (sender is { IsTerminal: false } || pending is not null) throw new InvalidOperationException("设备正在处理任务或命令");
     }
     public Task ReadConfiguration() => UnderGate(async () =>
     {
-        RequireIdle(); management.Enqueue("$I"); management.Enqueue("$$"); await SendManagement();
+        RequireIdle(true); management.Enqueue("$I"); management.Enqueue("$$"); management.Enqueue("$G"); await SendManagement();
+    });
+    public bool HomingEnabled => homing;
+    public Task Home(bool hardwareConfirmed) => UnderGate(async () =>
+    {
+        RequireIdle(true);
+        if (!homing || !hardwareConfirmed) throw new InvalidOperationException("回零需 $22=1 和开关/方向确认");
+        pending = "home"; commandDeadline = Now + TimeSpan.FromMinutes(2); await Write("$H\n");
+    });
+    public Task Unlock(bool confirmed) => UnderGate(async () =>
+    {
+        RequireIdle(true);
+        if (!confirmed || machine != "Alarm") throw new InvalidOperationException("仅在处理报警原因后解锁");
+        pending = "unlock"; commandDeadline = Now + TimeSpan.FromSeconds(5); await Write("$X\n");
     });
     private async Task SendManagement()
     {
@@ -147,6 +166,7 @@ public sealed class DeviceSession : IAsyncDisposable
         if (!operatorConfirmed || epoch != expectedEpoch) throw new InvalidOperationException("确认已失效，请重新检查");
         RequireIdle();
         if (!firmware.StartsWith("Grbl 1.1", StringComparison.Ordinal) || maxPower is null || maxPower < limits.MaxPower) throw new InvalidOperationException("请读取 GRBL 1.1 配置并匹配 $30 功率范围");
+        if (!standardFrame) throw new InvalidOperationException("请读取配置并确认 G54/G17/G94 模态");
         var analysis = GcodeProgram.Prepare(job.Content, limits);
         if (analysis.Plan.Sha256 != job.Hash) throw new InvalidDataException("任务内容已变化");
         if (analysis.EmitsLaser && !laserMode) throw new InvalidOperationException("激光加工需要设备 $32=1");

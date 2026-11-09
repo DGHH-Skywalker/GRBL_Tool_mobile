@@ -114,15 +114,15 @@ public sealed class MainActivity : Activity
         Button(row, "X−", () => Session().Jog(-1, 0, Value(jogStep), 300)); Button(row, "X+", () => Session().Jog(1, 0, Value(jogStep), 300));
         row = Row(p);
         Button(row, "Y−", () => Session().Jog(0, -1, Value(jogStep), 300)); Button(row, "Y+", () => Session().Jog(0, 1, Value(jogStep), 300));
+        Button(p, "硬件回零", async () => { if (await Ask("回零", "确认已安装回零开关、方向正确且设备 $22=1？")) await Session().Home(true); });
+        Button(p, "报警解锁", async () => { if (await Ask("解锁", "确认已处理报警原因并检查位置？")) await Session().Unlock(true); });
         Button(p, "将当前位置设为工作零点", async () => { if (await Ask("设置原点", "确认当前位置作为 G54 工件 X/Y 零点？")) await Session().SetOrigin(); });
-        Button(p, "查看协议日志", () => { new AlertDialog.Builder(this).SetTitle("最近协议记录").SetMessage(string.Join('\n', Session().Log)).SetPositiveButton("关闭", (_, _) => { }).Show(); return Task.CompletedTask; });
+        Button(p, "查看协议日志", () => { ShowMessage("最近协议记录", string.Join('\n', Session().Log)); return Task.CompletedTask; });
         Button(p, "运行无光模拟任务", () => { StartForegroundService(new Intent(this, typeof(SimulationService))); return Task.CompletedTask; });
         Button(p, "扩展与许可证", () =>
         {
             var extension = new LaserMobile.Extensions.Xingguang.XingguangExtension();
-            new AlertDialog.Builder(this).SetTitle("GRBL Tool Mobile 0.2.0")
-                .SetMessage($"通用 GRBL 1.1 控制\n{extension.Profiles[0].DisplayName}\n\nGPL-3.0-or-later\nUSB: anotherlab MIT\nSkiaSharp / Svg.Skia MIT\nClipper2 Boost-1.0\n抖动：Cyotek MIT\n源码：github.com/DGHH-Skywalker/GRBL_Tool_mobile")
-                .SetPositiveButton("关闭", (_, _) => { }).Show(); return Task.CompletedTask;
+            ShowMessage("GRBL Tool Mobile 0.2.0", $"通用 GRBL 1.1 控制\n{extension.Profiles[0].DisplayName}\n\nGPL-3.0-or-later\nUSB: anotherlab MIT\nSkiaSharp / Svg.Skia MIT\nClipper2 Boost-1.0\n抖动：Cyotek MIT\n源码：github.com/DGHH-Skywalker/GRBL_Tool_mobile"); return Task.CompletedTask;
         });
     }
     private void BuildArtwork()
@@ -133,7 +133,8 @@ public sealed class MainActivity : Activity
             using var intent = new Intent(Intent.ActionOpenDocument); intent.SetType("*/*"); intent.AddCategory(Intent.CategoryOpenable);
 #pragma warning disable CA1422
             StartActivityForResult(intent, 20);
-#pragma warning restore CA1422 return Task.CompletedTask;
+#pragma warning restore CA1422
+            return Task.CompletedTask;
         });
         artwork = Label(p, "尚未导入作品");
         artWidth = Number(p, "图像/矢量加工宽度 mm", "30", "artWidth");
@@ -191,8 +192,12 @@ public sealed class MainActivity : Activity
         {
             var jobs = library.List().ToArray(); if (jobs.Length == 0) return;
             var tcs = new TaskCompletionSource<int>();
-            var dialog = new AlertDialog.Builder(this).SetTitle("准备任务").SetItems(jobs.Select(j => j.Name + " · " + j.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToArray(), (_, e) => tcs.TrySetResult(e.Which)).SetNegativeButton("取消", (_, _) => tcs.TrySetResult(-1)).Create();
-            dialog!.SetOnCancelListener(new DialogCancel(() => tcs.TrySetResult(-1))); dialog.Show();
+            var builder = new AlertDialog.Builder(this);
+            builder.SetTitle("准备任务");
+            builder.SetItems(jobs.Select(j => j.Name + " · " + j.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToArray(), (_, e) => tcs.TrySetResult(e.Which));
+            builder.SetNegativeButton("取消", (_, _) => tcs.TrySetResult(-1));
+            var dialog = builder.Create() ?? throw new InvalidOperationException("无法创建对话框");
+            dialog.SetOnCancelListener(new DialogCancel(() => tcs.TrySetResult(-1))); dialog.Show();
             int index = await tcs.Task; if (index < 0) return;
             var job = library.Read(jobs[index].Id); prepared = GcodeProgram.Prepare(job.Content, Limits()); selected = job; jobName = job.Name;
             artwork.Text = Description(); confirmed.Checked = false; canvas.Invalidate(); ShowPage(1);
@@ -203,14 +208,16 @@ public sealed class MainActivity : Activity
             using var intent = new Intent(Intent.ActionCreateDocument); intent.SetType("text/plain"); intent.AddCategory(Intent.CategoryOpenable); intent.PutExtra(Intent.ExtraTitle, selected.Name + ".nc");
 #pragma warning disable CA1422
             StartActivityForResult(intent, 21);
-#pragma warning restore CA1422 return Task.CompletedTask;
+#pragma warning restore CA1422
+            return Task.CompletedTask;
         });
         Button(p, "导出诊断日志", () =>
         {
             using var intent = new Intent(Intent.ActionCreateDocument); intent.SetType("text/plain"); intent.AddCategory(Intent.CategoryOpenable); intent.PutExtra(Intent.ExtraTitle, "grbl-diagnostics.txt");
 #pragma warning disable CA1422
             StartActivityForResult(intent, 22);
-#pragma warning restore CA1422 return Task.CompletedTask;
+#pragma warning restore CA1422
+            return Task.CompletedTask;
         });
         history = Label(p, "");
     }
@@ -303,16 +310,24 @@ public sealed class MainActivity : Activity
     private Task<bool> Ask(string title, string message)
     {
         var tcs = new TaskCompletionSource<bool>();
-        var dialog = new AlertDialog.Builder(this).SetTitle(title).SetMessage(message).SetPositiveButton("确认", (_, _) => tcs.TrySetResult(true)).SetNegativeButton("取消", (_, _) => tcs.TrySetResult(false)).Create();
-        dialog!.SetOnCancelListener(new DialogCancel(() => tcs.TrySetResult(false))); dialog.Show(); return tcs.Task;
+        var builder = new AlertDialog.Builder(this); builder.SetTitle(title); builder.SetMessage(message);
+        builder.SetPositiveButton("确认", (_, _) => tcs.TrySetResult(true)); builder.SetNegativeButton("取消", (_, _) => tcs.TrySetResult(false));
+        var dialog = builder.Create() ?? throw new InvalidOperationException("无法创建对话框");
+        dialog.SetOnCancelListener(new DialogCancel(() => tcs.TrySetResult(false))); dialog.Show(); return tcs.Task;
     }
     private sealed class DialogCancel(Action action) : Java.Lang.Object, IDialogInterfaceOnCancelListener { public void OnCancel(IDialogInterface? dialog) => action(); }
-    private void ShowError(string message) { if (!IsDestroyed) new AlertDialog.Builder(this).SetTitle("操作提示").SetMessage(message).SetPositiveButton("关闭", (_, _) => { }).Show(); }
+    private void ShowMessage(string title, string message)
+    {
+        if (IsDestroyed) return;
+        var builder = new AlertDialog.Builder(this); builder.SetTitle(title); builder.SetMessage(message);
+        builder.SetPositiveButton("关闭", (_, _) => { }); builder.Show();
+    }
+    private void ShowError(string message) => ShowMessage("操作提示", message);
     protected override void OnResume() { base.OnResume(); visible = true; Refresh(); }
     protected override void OnPause()
     {
         visible = false; handler.RemoveCallbacksAndMessages(null);
-        using var edit = preferences.Edit(); foreach (var input in savedInputs) edit!.PutString(input.Tag?.ToString(), input.Text); edit!.Apply(); base.OnPause();
+        using var edit = preferences.Edit(); foreach (var input in savedInputs) edit!.PutString(input.Tag?.ToString() ?? "", input.Text); edit!.Apply(); base.OnPause();
     }
     protected override void OnDestroy() { conversion?.Cancel(); conversion?.Dispose(); base.OnDestroy(); }
     private void Refresh()
