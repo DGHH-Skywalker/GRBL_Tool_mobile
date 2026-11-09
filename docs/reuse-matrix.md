@@ -16,3 +16,5 @@
 发送器属于本产品的任务状态集成层，采用 GRBL 公开协议独立实现。采用独立实现的原因：需要统一的显式完成屏障、控制器确认暂停、无重放超时和服务所有权；不复制上游 UI 生命周期及 Windows 耦合。
 
 禁止未评估就重写成熟 USB、图像渲染或几何库。新增替代库时提交接入结果与 ADR。
+
+图像导入已整理为独立的 LaserMobile.Imaging.Skia 项目，核心 CI 使用真实 Skia Linux native 运行 PNG/SVG 与 Clipper2 转换用例。Android 继续使用对应 Android native assets。

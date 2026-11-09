@@ -18,7 +18,6 @@
     <ProjectReference Include="../LaserMobile.Extensions.Xingguang/LaserMobile.Extensions.Xingguang.csproj" />
     <PackageReference Include="UsbSerialForAndroid" />
     <PackageReference Include="SkiaSharp.Views" />
-    <PackageReference Include="Svg.Skia" />
-    <PackageReference Include="Clipper2" />
+    <ProjectReference Include="../LaserMobile.Imaging.Skia/LaserMobile.Imaging.Skia.csproj" />
   </ItemGroup>
 </Project>

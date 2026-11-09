@@ -8,6 +8,7 @@
     <Project Path="src/LaserMobile.Extensions.StandardGrbl/LaserMobile.Extensions.StandardGrbl.csproj" />
     <Project Path="src/LaserMobile.Extensions.Xingguang/LaserMobile.Extensions.Xingguang.csproj" />
     <Project Path="src/LaserMobile.Grbl/LaserMobile.Grbl.csproj" />
+    <Project Path="src/LaserMobile.Imaging.Skia/LaserMobile.Imaging.Skia.csproj" />
     <Project Path="src/LaserMobile.Persistence/LaserMobile.Persistence.csproj" />
   </Folder>
   <Folder Name="/tests/">

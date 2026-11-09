@@ -16,7 +16,7 @@ using LaserMobile.Persistence;
 using LaserMobile.Extensions.Abstractions;
 using LaserMobile.AndroidApp.Services;
 using LaserMobile.AndroidApp.Usb;
-using LaserMobile.AndroidApp.Imaging;
+using LaserMobile.Imaging.Skia;
 using System.Globalization;
 using System.Text;
 
@@ -55,7 +55,7 @@ public sealed class MainActivity : Activity
         executions = new ExecutionStore(Path.Combine(FilesDir.AbsolutePath, "executions.sqlite"));
         if (DeviceExecutionService.Current is null) executions.RecoverInterrupted();
         root = new LinearLayout(this) { Orientation = Orientation.Vertical };
-        root.SetPadding(16, 36, 16, 16); SetContentView(root);
+        var density = Resources!.DisplayMetrics!.Density; root.SetPadding((int)(16 * density), (int)(48 * density), (int)(16 * density), (int)(28 * density)); SetContentView(root);
         status = Label(root, "GRBL Tool Mobile · 连接设备或导入作品");
         var nav = Row(root);
         string[] titles = ["设备", "作品", "加工", "历史"];

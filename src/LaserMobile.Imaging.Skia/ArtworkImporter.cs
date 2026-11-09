@@ -8,7 +8,7 @@ using Svg.Skia;
 using LaserMobile.Cam;
 using LaserMobile.Domain;
 using LaserMobile.Grbl;
-namespace LaserMobile.AndroidApp.Imaging;
+namespace LaserMobile.Imaging.Skia;
 
 public sealed record ImageEdits(double Left = 0, double Top = 0, double Right = 1, double Bottom = 1, int QuarterTurns = 0);
 
@@ -39,19 +39,43 @@ public static class ArtworkImporter
         edits ??= new ImageEdits();
         if (new[] { edits.Left, edits.Top, edits.Right, edits.Bottom }.Any(v => !double.IsFinite(v) || v < 0 || v > 1) || edits.Right <= edits.Left || edits.Bottom <= edits.Top || edits.QuarterTurns is < 0 or > 3)
             throw new ArgumentException("裁剪范围需为 0–1 且右下角大于左上角");
-        double cropWidth = codec.Info.Width * (edits.Right - edits.Left), cropHeight = codec.Info.Height * (edits.Bottom - edits.Top);
+        bool exifSwap = codec.EncodedOrigin is SKEncodedOrigin.LeftTop or SKEncodedOrigin.RightTop or SKEncodedOrigin.RightBottom or SKEncodedOrigin.LeftBottom;
+        double imageWidth = exifSwap ? codec.Info.Height : codec.Info.Width, imageHeight = exifSwap ? codec.Info.Width : codec.Info.Height;
+        double cropWidth = imageWidth * (edits.Right - edits.Left), cropHeight = imageHeight * (edits.Bottom - edits.Top);
         if (edits.QuarterTurns % 2 == 1) (cropWidth, cropHeight) = (cropHeight, cropWidth);
         int width = Math.Clamp((int)Math.Ceiling(settings.WidthMillimeters / settings.LineSpacing), 1, 1500);
         int height = Math.Max(1, (int)Math.Round(width * cropHeight / cropWidth));
         if ((long)width * height > 1_000_000) throw new FormatException("采样超过 100 万像素");
         using var decoded = SKBitmap.Decode(bytes) ?? throw new FormatException("图片解码失败");
+        using var oriented = ApplyExif(decoded, codec.EncodedOrigin);
+        var image = oriented ?? decoded;
         using var resized = new SKBitmap(width, height); using var c = new SKCanvas(resized);
         c.Clear(SKColors.White); using var paint = new SKPaint { IsAntialias = true };
-        var crop = new SKRect((float)(edits.Left * decoded.Width), (float)(edits.Top * decoded.Height), (float)(edits.Right * decoded.Width), (float)(edits.Bottom * decoded.Height));
+        var crop = new SKRect((float)(edits.Left * image.Width), (float)(edits.Top * image.Height), (float)(edits.Right * image.Width), (float)(edits.Bottom * image.Height));
         c.Translate(width / 2f, height / 2f); c.RotateDegrees(edits.QuarterTurns * 90);
         float dw = edits.QuarterTurns % 2 == 0 ? width : height, dh = edits.QuarterTurns % 2 == 0 ? height : width;
-        c.DrawBitmap(decoded, crop, new SKRect(-dw / 2, -dh / 2, dw / 2, dh / 2), paint);
+        c.DrawBitmap(image, crop, new SKRect(-dw / 2, -dh / 2, dw / 2, dh / 2), paint);
         return Raster(resized, settings, limits, token);
+    }
+    private static SKBitmap? ApplyExif(SKBitmap source, SKEncodedOrigin origin)
+    {
+        if (origin == SKEncodedOrigin.TopLeft) return null;
+        bool swap = origin is SKEncodedOrigin.LeftTop or SKEncodedOrigin.RightTop or SKEncodedOrigin.RightBottom or SKEncodedOrigin.LeftBottom;
+        var result = new SKBitmap(swap ? source.Height : source.Width, swap ? source.Width : source.Height);
+        using var canvas = new SKCanvas(result);
+        float w = source.Width, h = source.Height;
+        var matrix = origin switch
+        {
+            SKEncodedOrigin.TopRight => new SKMatrix(-1, 0, w, 0, 1, 0, 0, 0, 1),
+            SKEncodedOrigin.BottomRight => new SKMatrix(-1, 0, w, 0, -1, h, 0, 0, 1),
+            SKEncodedOrigin.BottomLeft => new SKMatrix(1, 0, 0, 0, -1, h, 0, 0, 1),
+            SKEncodedOrigin.LeftTop => new SKMatrix(0, 1, 0, 1, 0, 0, 0, 0, 1),
+            SKEncodedOrigin.RightTop => new SKMatrix(0, -1, h, 1, 0, 0, 0, 0, 1),
+            SKEncodedOrigin.RightBottom => new SKMatrix(0, -1, h, -1, 0, w, 0, 0, 1),
+            SKEncodedOrigin.LeftBottom => new SKMatrix(0, 1, 0, -1, 0, w, 0, 0, 1),
+            _ => SKMatrix.Identity
+        };
+        canvas.SetMatrix(matrix); canvas.DrawBitmap(source, 0, 0); return result;
     }
     private static ProgramAnalysis Raster(SKBitmap bitmap, RasterSettings settings, JobLimits limits, CancellationToken token)
     {

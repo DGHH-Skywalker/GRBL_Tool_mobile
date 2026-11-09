@@ -36,6 +36,7 @@ public sealed class JobLibrary
     private static StoredJob ReadFile(string path)
     {
         var job = JsonSerializer.Deserialize<StoredJob>(File.ReadAllText(path)) ?? throw new InvalidDataException("任务记录为空");
+        if (job.Content is null || job.Name is null || job.Hash is null || Path.GetFileName(path) != job.Id + ".json") throw new InvalidDataException("任务元数据损坏");
         if (Hash(job.Content) != job.Hash) throw new InvalidDataException("任务文件损坏");
         return job;
     }
