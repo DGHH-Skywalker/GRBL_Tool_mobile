@@ -29,6 +29,14 @@ public sealed class ExecutionStore
         command.CommandText = "UPDATE executions SET state='Interrupted',error='Application restarted; explicit new execution required' WHERE state IN ('Running','Pausing','Paused','Draining','Cancelling')";
         return command.ExecuteNonQuery();
     }
+    public IReadOnlyList<HistoryEntry> History()
+    {
+        using var c = Open(); using var command = c.CreateCommand();
+        command.CommandText = "SELECT id,state,error FROM executions ORDER BY rowid DESC LIMIT 100";
+        using var reader = command.ExecuteReader(); var entries = new List<HistoryEntry>();
+        while (reader.Read()) entries.Add(new(Guid.Parse(reader.GetString(0)), Enum.Parse<ExecutionState>(reader.GetString(1)), reader.IsDBNull(2) ? null : reader.GetString(2)));
+        return entries;
+    }
     public ExecutionState? ReadState(Guid id)
     {
         using var c = Open(); using var command = c.CreateCommand();

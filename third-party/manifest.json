@@ -1,6 +1,26 @@
 {
   "projectLicense": "GPL-3.0-or-later",
-  "copiedUpstreamSource": [],
+  "copiedUpstreamSource": [
+    {
+      "component": "grayscale Floyd-Steinberg diffusion adaptation",
+      "repository": "https://github.com/arkypita/LaserGRBL",
+      "commit": "1f9337b3af27133f8b1696e41cc110f2af74d04f",
+      "sourceFiles": [
+        "LaserGRBL/RasterConverter/Dithering/ErrorDiffusionDithering.cs",
+        "LaserGRBL/RasterConverter/Dithering/FloydSteinbergDithering.cs"
+      ],
+      "license": "MIT",
+      "copyright": "Copyright © 2015 Cyotek Ltd.",
+      "localFiles": [
+        "src/LaserMobile.Cam/Diffusion.cs"
+      ],
+      "modifications": [
+        "grayscale byte buffer",
+        "row and column zero boundary fix",
+        "remove System.Drawing"
+      ]
+    }
+  ],
   "dependencies": [
     {
       "name": "UsbSerialForAndroid",
@@ -10,7 +30,7 @@
     },
     {
       "name": "SkiaSharp.Views",
-      "version": "3.119.1",
+      "version": "3.119.2",
       "license": "MIT",
       "usage": "Android preview"
     },
@@ -19,6 +39,18 @@
       "version": "10.0.14",
       "license": "MIT",
       "usage": "execution persistence"
+    },
+    {
+      "name": "Svg.Skia",
+      "version": "4.9.1",
+      "license": "MIT",
+      "usage": "SVG raster rendering"
+    },
+    {
+      "name": "Clipper2",
+      "version": "2.0.0",
+      "license": "BSL-1.0",
+      "usage": "outline simplification"
     }
   ]
 }

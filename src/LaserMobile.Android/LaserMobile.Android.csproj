@@ -4,8 +4,8 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>LaserMobile.AndroidApp</RootNamespace>
     <ApplicationId>io.github.dghhskywalker.grbltoolmobile</ApplicationId>
-    <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>2</ApplicationVersion>
+    <ApplicationDisplayVersion>0.2.0</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>29</SupportedOSPlatformVersion>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <RunAOTCompilation>false</RunAOTCompilation>
@@ -13,7 +13,12 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../LaserMobile.Application/LaserMobile.Application.csproj" />
+    <ProjectReference Include="../LaserMobile.Persistence/LaserMobile.Persistence.csproj" />
+    <ProjectReference Include="../LaserMobile.Cam/LaserMobile.Cam.csproj" />
+    <ProjectReference Include="../LaserMobile.Extensions.Xingguang/LaserMobile.Extensions.Xingguang.csproj" />
     <PackageReference Include="UsbSerialForAndroid" />
     <PackageReference Include="SkiaSharp.Views" />
+    <PackageReference Include="Svg.Skia" />
+    <PackageReference Include="Clipper2" />
   </ItemGroup>
 </Project>

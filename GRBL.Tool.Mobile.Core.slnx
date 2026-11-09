@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/LaserMobile.Application/LaserMobile.Application.csproj" />
+    <Project Path="src/LaserMobile.Cam/LaserMobile.Cam.csproj" />
     <Project Path="src/LaserMobile.Domain/LaserMobile.Domain.csproj" />
     <Project Path="src/LaserMobile.Extensions.Abstractions/LaserMobile.Extensions.Abstractions.csproj" />
     <Project Path="src/LaserMobile.Extensions.StandardGrbl/LaserMobile.Extensions.StandardGrbl.csproj" />

@@ -132,6 +132,14 @@
         "type": "Project",
         "dependencies": {
           "LaserMobile.Domain": "[1.0.0, )",
+          "LaserMobile.Grbl": "[1.0.0, )",
+          "LaserMobile.Persistence": "[1.0.0, )"
+        }
+      },
+      "lasermobile.cam": {
+        "type": "Project",
+        "dependencies": {
+          "LaserMobile.Domain": "[1.0.0, )",
           "LaserMobile.Grbl": "[1.0.0, )"
         }
       },

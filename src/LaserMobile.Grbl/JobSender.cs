@@ -27,7 +27,7 @@ public sealed class JobSender
     public JobSender(JobPlan job, TimeSpan? acknowledgementTimeout = null, TimeSpan? statusTimeout = null)
     {
         // Revalidate and copy caller data so execution bytes cannot change after preparation.
-        this.job = DryRunJob.Parse(string.Join('\n', job.Lines));
+        this.job = GcodeProgram.Prepare(string.Join('\n', job.Lines), JobLimits.Analysis).Plan;
         if (this.job.Sha256 != job.Sha256) throw new ArgumentException("Job hash mismatch.", nameof(job));
         this.acknowledgementTimeout = acknowledgementTimeout ?? TimeSpan.FromSeconds(10);
         this.statusTimeout = statusTimeout ?? TimeSpan.FromSeconds(3);
@@ -49,7 +49,7 @@ public sealed class JobSender
     {
         if (IsTerminal || State == ExecutionState.Ready) return;
         if (now >= statusDeadline) { Interrupt("Controller status timeout."); return; }
-        if (pending != Pending.None && now >= deadline && State != ExecutionState.Paused)
+        if (pending != Pending.None && now >= deadline && State is not (ExecutionState.Paused or ExecutionState.Pausing))
         { Interrupt("Acknowledgement timeout; movement is not replayed."); return; }
         if (now >= nextQuery)
         {
@@ -63,7 +63,10 @@ public sealed class JobSender
         if (IsTerminal || State == ExecutionState.Ready) return;
         switch (response)
         {
-            case Welcome: Interrupt("Controller reset detected."); break;
+            case Welcome:
+                if (State == ExecutionState.Cancelling) { State = ExecutionState.Cancelled; output.Clear(); }
+                else Interrupt("Controller reset detected.");
+                break;
             case Alarm a: Interrupt($"ALARM:{a.Code}"); break;
             case CommandError e: Interrupt($"error:{e.Code}"); break;
             case Status s:
@@ -90,7 +93,7 @@ public sealed class JobSender
     }
     public void Resume(DateTimeOffset now)
     {
-        if (State != ExecutionState.Paused) throw new InvalidOperationException("Controller has not confirmed hold.");
+        if (State is not (ExecutionState.Paused or ExecutionState.Pausing)) throw new InvalidOperationException("Controller has not confirmed hold.");
         output.Enqueue("~"); State = sent == job.Lines.Count ? ExecutionState.Draining : ExecutionState.Running;
         deadline = now + acknowledgementTimeout;
         SendNext(now);
@@ -102,6 +105,11 @@ public sealed class JobSender
         Interrupt("Cancellation requested; queue clearance requires device verification.");
     }
     public void TransportLost() => Interrupt("Transport lost.");
+    public void ConfirmedCancel()
+    {
+        if (IsTerminal || State == ExecutionState.Ready) throw new InvalidOperationException("No active execution.");
+        output.Clear(); output.Enqueue("!"); output.Enqueue("\u0018"); State = ExecutionState.Cancelling;
+    }
     private void SendNext(DateTimeOffset now)
     {
         if (pending != Pending.None || barrierAcknowledged) return;
