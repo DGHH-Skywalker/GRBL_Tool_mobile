@@ -139,6 +139,16 @@ public sealed class DeviceSession : IAsyncDisposable
     {
         RequireIdle(true); maxPower = null; laserMode = false; standardFrame = false; management.Enqueue("$I"); management.Enqueue("$$"); management.Enqueue("$G"); await SendManagement();
     });
+    public Task SelectStandardFrame() => UnderGate(async () =>
+    {
+        RequireIdle(); standardFrame = false; wpos = wco = null;
+        management.Enqueue("G54 G17 G94"); management.Enqueue("$G"); await SendManagement();
+    });
+    public Task CancelJog() => UnderGate(async () =>
+    {
+        if (machine != "Jog" || sender is { IsTerminal: false }) throw new InvalidOperationException("当前没有可取消的点动");
+        await transport.WriteAsync(new byte[] { 0x85 }, stop.Token); AddLog("> [JOG CANCEL]");
+    });
     public bool HomingEnabled => homing;
     public Task Home(bool hardwareConfirmed) => UnderGate(async () =>
     {

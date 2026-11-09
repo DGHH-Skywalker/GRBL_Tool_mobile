@@ -132,6 +132,8 @@ public sealed class MainActivity : Activity
         Button(row, "Y−", () => Session().Jog(0, -1, Value(jogStep), 300)); Button(row, "Y+", () => Session().Jog(0, 1, Value(jogStep), 300));
         Button(p, "硬件回零", async () => { if (await Ask("回零", "确认已安装回零开关、方向正确且设备 $22=1？")) await Session().Home(true); });
         Button(p, "报警解锁", async () => { if (await Ask("解锁", "确认已处理报警原因并检查位置？")) await Session().Unlock(true); });
+        Button(p, "选择 G54 / G17 / G94 工作模式", () => Session().SelectStandardFrame());
+        Button(p, "取消点动", () => Session().CancelJog());
         Button(p, "将当前位置设为工作零点", async () => { if (await Ask("设置原点", "确认当前位置作为 G54 工件 X/Y 零点？")) await Session().SetOrigin(); });
         Button(p, "查看协议日志", () => { ShowMessage("最近协议记录", string.Join('\n', Session().Log)); return Task.CompletedTask; });
         Button(p, "运行无光模拟任务", () => { StartForegroundService(new Intent(this, typeof(SimulationService))); return Task.CompletedTask; });

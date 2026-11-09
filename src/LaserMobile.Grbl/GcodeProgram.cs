@@ -45,7 +45,7 @@ public static partial class GcodeProgram
                 if (!double.IsFinite(value)) throw new FormatException("非法数值");
                 if (key == 'G')
                 {
-                    string group = value switch { 0 or 1 => "motion", 20 or 21 => "units", 90 or 91 => "distance", 17 => "plane", 94 => "feed", _ => throw new FormatException($"暂未支持 G{value}") };
+                    string group = value switch { 0 or 1 => "motion", 20 or 21 => "units", 90 or 91 => "distance", 17 => "plane", 94 => "feed", 54 => "coordinate", _ => throw new FormatException($"暂未支持 G{value}") };
                     if (!groups.Add(group)) throw new FormatException("同一模态组重复");
                     if (value is 0 or 1) moveThisLine = (int)value;
                     if (value is 20 or 21) { scale = value == 20 ? 25.4 : 1; unitsKnown = true; }

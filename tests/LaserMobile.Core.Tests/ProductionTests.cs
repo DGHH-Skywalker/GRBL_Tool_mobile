@@ -17,6 +17,11 @@ public sealed class ProductionTests
         Assert.Equal(25.4, p.MaxX, 6); Assert.Equal(12.7, p.MaxY, 6);
         Assert.Equal(12.7, p.Segments[^1].X2, 6);
     }
+    [Fact] public void StandardCoordinateHeaderIsAccepted()
+    {
+        var p=GcodeProgram.Prepare("G21 G90 G54 G17 G94\nM5\nG1 X1 Y1 F300\nM5",Limits);
+        Assert.Equal(1,p.MaxX);Assert.Equal(1,p.MaxY);
+    }
     [Fact] public void CanonicalReparseRetainsHash()
     {
         var p = GcodeProgram.Prepare("G21 (mm)\nG90\nM5\nM4 S100\nG1X1Y2F300;sample\nM5", Limits);

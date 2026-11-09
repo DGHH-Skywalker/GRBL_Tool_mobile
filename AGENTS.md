@@ -5,6 +5,6 @@ Prioritize existing open-source libraries. Record versions, licenses, source com
 Keep Domain independent of Android and Xingguang. One device session owns one serialized writer.
 GRBL ok acknowledges a line, not physical completion. Preserve explicit drain/barrier completion, timeout, reset and alarm tests.
 Never automatically replay movement or resume after reconnect/restart. Unknown hardware capabilities remain unknown.
-Run `dotnet test GRBL.Tool.Mobile.Core.slnx` and `dotnet build GRBL.Tool.Mobile.slnx -c Release` for relevant changes. Use locked restore after dependency changes are committed.
+Use GitHub Actions for builds and tests (user preference). Push relevant changes and inspect core/Android jobs, fixing failures before delivery. Local dependency restore is permitted to update lockfiles; preserve locked restore in CI. Native imaging tests run on the Linux runner.
 Keep signing keys, credentials, device serial identifiers and raw private logs out of Git.
 Report completed verification and outstanding hardware validation accurately.

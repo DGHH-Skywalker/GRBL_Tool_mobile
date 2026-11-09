@@ -29,3 +29,6 @@
 
 - 提交 85ea3b3 的 core：42 项测试通过，Android Release 构建通过，包含真实会话端到端模拟和持久化启动事务。
 - 后续补充暗色主题、图像 EXIF 方向与任务元数据校验，继续由 Actions 验证。
+
+- 提交 197ba7d：GitHub Actions 全通过；48 项测试，包含真实 Skia Linux PNG/SVG 转换和 Clipper2 轮廓；Android Release APK 已生成。
+- 最终收尾增加标准 G54 头部兼容与显式工作模式/取消点动入口，构建和测试仍由 Actions 完成。
