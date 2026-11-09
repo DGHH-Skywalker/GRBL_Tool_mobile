@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "custom-grbl-example",
+  "displayName": "自定义示例（使用前按实机资料填写）",
+  "firmwareFamily": "grbl1.1",
+  "width": 40,
+  "height": 40,
+  "maxFeed": 1200,
+  "maxPower": 1000
+}

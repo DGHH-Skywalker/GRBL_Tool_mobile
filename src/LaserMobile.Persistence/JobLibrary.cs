@@ -10,6 +10,8 @@ public sealed class JobLibrary
     public JobLibrary(string root) { this.root = Path.GetFullPath(root); Directory.CreateDirectory(this.root); }
     public StoredJob Commit(string name, JobPlan plan)
     {
+        var existing = Directory.EnumerateFiles(root, "*.json").Select(p => new FileInfo(p)).ToArray();
+        if (existing.Length >= 100 || existing.Sum(p => p.Length) >= 64_000_000) throw new IOException("任务库达到 100 项或 64 MB 上限，请删除旧任务");
         var content = string.Join('\n', plan.Lines) + "\n";
         if (Hash(content) != plan.Sha256) throw new InvalidDataException("任务哈希不匹配");
         var job = new StoredJob(plan.Id, Path.GetFileName(name), plan.Sha256, content, DateTimeOffset.UtcNow);
@@ -22,13 +24,14 @@ public sealed class JobLibrary
     public IReadOnlyList<StoredJob> List()
     {
         var jobs = new List<StoredJob>();
-        foreach (var path in Directory.EnumerateFiles(root, "*.json"))
+        foreach (var path in Directory.EnumerateFiles(root, "*.json").OrderByDescending(File.GetLastWriteTimeUtc).Take(100))
         {
             try { var job = ReadFile(path); jobs.Add(job); }
             catch (Exception e) when (e is JsonException or InvalidDataException or IOException) { }
         }
         return jobs.OrderByDescending(x => x.CreatedAt).Take(100).ToArray();
     }
+    public void Delete(Guid id) => File.Delete(Path.Combine(root, id + ".json"));
     public StoredJob Read(Guid id) => ReadFile(Path.Combine(root, id + ".json"));
     private static StoredJob ReadFile(string path)
     {

@@ -10,7 +10,7 @@ public sealed class ExecutionStore
         connectionString = new SqliteConnectionStringBuilder { DataSource = databasePath }.ToString();
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "CREATE TABLE IF NOT EXISTS executions(id TEXT PRIMARY KEY, state TEXT NOT NULL, error TEXT);";
+        command.CommandText = "CREATE TABLE IF NOT EXISTS executions(id TEXT PRIMARY KEY, state TEXT NOT NULL, error TEXT); CREATE TABLE IF NOT EXISTS start_commands(id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, execution_id TEXT NOT NULL);";
         command.ExecuteNonQuery();
     }
     private SqliteConnection Open() { var c = new SqliteConnection(connectionString); c.Open(); return c; }
@@ -22,6 +22,24 @@ public sealed class ExecutionStore
         command.Parameters.AddWithValue("$state", snapshot.State.ToString());
         command.Parameters.AddWithValue("$error", (object?)snapshot.Error ?? DBNull.Value);
         command.ExecuteNonQuery();
+    }
+    public bool IsDuplicateStart(Guid commandId, string fingerprint)
+    {
+        using var c = Open(); using var command = c.CreateCommand();
+        command.CommandText = "SELECT fingerprint FROM start_commands WHERE id=$id";
+        command.Parameters.AddWithValue("$id", commandId.ToString());
+        var existing = command.ExecuteScalar() as string;
+        if (existing is not null && existing != fingerprint) throw new InvalidOperationException("重复命令 ID 的任务或参数不一致");
+        return existing is not null;
+    }
+    public void RecordStart(Guid commandId, string fingerprint, ExecutionSnapshot snapshot)
+    {
+        using var c = Open(); using var transaction = c.BeginTransaction();
+        using var command = c.CreateCommand(); command.Transaction = transaction;
+        command.CommandText = "INSERT INTO start_commands VALUES($id,$fingerprint,$execution); INSERT INTO executions VALUES($execution,$state,NULL)";
+        command.Parameters.AddWithValue("$id", commandId.ToString()); command.Parameters.AddWithValue("$fingerprint", fingerprint);
+        command.Parameters.AddWithValue("$execution", snapshot.ExecutionId.ToString()); command.Parameters.AddWithValue("$state", snapshot.State.ToString());
+        command.ExecuteNonQuery(); transaction.Commit();
     }
     public int RecoverInterrupted()
     {

@@ -2,10 +2,15 @@ name: Build and test
 on:
   push:
   pull_request:
+  workflow_dispatch:
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   core:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +26,7 @@ jobs:
           name: test-results
           path: artifacts/tests
   android:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

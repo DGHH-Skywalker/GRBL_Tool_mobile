@@ -13,6 +13,7 @@ using LaserMobile.Cam;
 using LaserMobile.Domain;
 using LaserMobile.Grbl;
 using LaserMobile.Persistence;
+using LaserMobile.Extensions.Abstractions;
 using LaserMobile.AndroidApp.Services;
 using LaserMobile.AndroidApp.Usb;
 using LaserMobile.AndroidApp.Imaging;
@@ -27,7 +28,8 @@ public sealed class MainActivity : Activity
     private readonly Handler handler = new(Looper.MainLooper!);
     private bool visible, converting;
     private TextView status = null!, details = null!, artwork = null!, history = null!;
-    private EditText baud = null!, areaWidth = null!, areaHeight = null!, maxFeed = null!, maxPower = null!, artWidth = null!, spacing = null!, feed = null!, power = null!, gamma = null!, jogStep = null!;
+    private EditText baud = null!, areaWidth = null!, areaHeight = null!, maxFeed = null!, maxPower = null!, artWidth = null!, spacing = null!, feed = null!, power = null!, gamma = null!, jogStep = null!, cropLeft = null!, cropTop = null!, cropRight = null!, cropBottom = null!;
+    private int quarterTurns;
     private CheckBox invert = null!, dither = null!, threshold = null!, outline = null!, confirmed = null!;
     private Spinner ports = null!;
     private readonly List<(UsbSerialPort Port, string Label)> devices = [];
@@ -63,7 +65,13 @@ public sealed class MainActivity : Activity
             var scroll = new ScrollView(this); var page = new LinearLayout(this) { Orientation = Orientation.Vertical };
             page.SetPadding(8, 8, 8, 8); scroll.AddView(page); root.AddView(scroll, new LinearLayout.LayoutParams(-1, 0, 1)); pages.Add(page);
         }
-        BuildDevice(); BuildArtwork(); BuildJob(); BuildHistory(); ShowPage(0);
+        BuildDevice(); BuildArtwork(); BuildJob(); BuildHistory();
+        if (Guid.TryParse(preferences.GetString("selectedJob", ""), out var savedId))
+        {
+            try { selected = library.Read(savedId); prepared = GcodeProgram.Prepare(selected.Content, Limits()); jobName = selected.Name; artwork.Text = Description(); }
+            catch (Exception e) when (e is IOException or FormatException or ArgumentException or System.Text.Json.JsonException) { selected = null; }
+        }
+        ShowPage(0);
     }
     private TextView Label(LinearLayout parent, string text)
     { var v = new TextView(this) { Text = text, TextSize = 15 }; v.SetPadding(0, 8, 0, 8); parent.AddView(v); return v; }
@@ -102,8 +110,16 @@ public sealed class MainActivity : Activity
         ports = new Spinner(this); p.AddView(ports);
         Button(p, "扫描 USB 设备与端口", Scan);
         Button(p, "授权并连接", Connect);
+        Button(p, "导入设备配置 JSON", () =>
+        {
+            using var intent = new Intent(Intent.ActionOpenDocument); intent.SetType("*/*"); intent.AddCategory(Intent.CategoryOpenable);
+#pragma warning disable CA1422
+            StartActivityForResult(intent, 23);
+#pragma warning restore CA1422
+            return Task.CompletedTask;
+        });
         Button(p, "读取固件与配置", () => Session().ReadConfiguration());
-        Button(p, "断开连接", async () => { if (DeviceExecutionService.Current is { } s) await s.Disconnect(); });
+        Button(p, "断开连接", async () => { if (DeviceExecutionService.Current is { } s && await Ask("断开设备", "活动任务将中断，程序会先发送保持请求。确认断开？")) await s.Disconnect(); });
         details = Label(p, "设备尚未连接");
         areaWidth = Number(p, "工作区域宽度 mm", "40", "areaWidth");
         areaHeight = Number(p, "工作区域高度 mm", "40", "areaHeight");
@@ -143,6 +159,10 @@ public sealed class MainActivity : Activity
         power = Number(p, "加工最大功率 S", "100", "power");
         gamma = Number(p, "Gamma", "1", "gamma");
         invert = Check(p, "反色"); threshold = Check(p, "黑白阈值"); dither = Check(p, "Floyd–Steinberg 抖动"); outline = Check(p, "SVG 轮廓加工（展开后的基础图形与路径）");
+        Label(p, "位图裁剪：比例坐标 0–1；旋转顺时针 90°");
+        cropLeft = Number(p, "裁剪左", "0", "cropLeft"); cropTop = Number(p, "裁剪上", "0", "cropTop");
+        cropRight = Number(p, "裁剪右", "1", "cropRight"); cropBottom = Number(p, "裁剪下", "1", "cropBottom");
+        Button(p, "旋转 90°", () => { quarterTurns = (quarterTurns + 1) % 4; artwork.Text = $"位图旋转 {quarterTurns * 90}°，重新生成后应用"; confirmed.Checked = false; return Task.CompletedTask; });
         Button(p, "生成并保存任务", Prepare);
         Button(p, "取消转换", () => { conversion?.Cancel(); return Task.CompletedTask; });
         Button(p, "适合屏幕", () => { zoom = 1; panX = panY = 0; canvas.Invalidate(); return Task.CompletedTask; });
@@ -202,6 +222,16 @@ public sealed class MainActivity : Activity
             var job = library.Read(jobs[index].Id); prepared = GcodeProgram.Prepare(job.Content, Limits()); selected = job; jobName = job.Name;
             artwork.Text = Description(); confirmed.Checked = false; canvas.Invalidate(); ShowPage(1);
         });
+        Button(p, "删除已选任务", async () =>
+        {
+            if (selected is null) throw new InvalidOperationException("请先选择任务");
+            if (DeviceExecutionService.Current?.Session?.Snapshot.Execution?.State is ExecutionState.Running or ExecutionState.Pausing or ExecutionState.Paused or ExecutionState.Draining or ExecutionState.Cancelling)
+                throw new InvalidOperationException("活动加工期间请保留任务文件");
+            if (await Ask("删除任务", selected.Name))
+            {
+                library.Delete(selected.Id); selected = null; prepared = null; artwork.Text = "尚未选择任务"; confirmed.Checked = false; canvas.Invalidate(); RefreshHistory();
+            }
+        });
         Button(p, "导出任务 G-code", () =>
         {
             if (selected is null) throw new InvalidOperationException("请先选择任务");
@@ -245,11 +275,12 @@ public sealed class MainActivity : Activity
         var data = source; var name = sourceName; var limits = Limits();
         var settings = new RasterSettings(Value(artWidth), Value(spacing), Value(feed), Value(power), Value(gamma), invert.Checked, true, dither.Checked ? RasterMode.FloydSteinberg : threshold.Checked ? RasterMode.Threshold : RasterMode.Grayscale);
         bool vector = outline.Checked;
+        var edits = new ImageEdits(Value(cropLeft), Value(cropTop), Value(cropRight), Value(cropBottom), quarterTurns);
         converting = true; conversion?.Dispose(); conversion = new CancellationTokenSource();
         try
         {
             artwork.Text = "正在准备任务…";
-            var result = await Task.Run(() => IsArtwork(name) ? ArtworkImporter.Convert(data, name, settings, limits, vector, conversion.Token) : GcodeProgram.Prepare(Encoding.ASCII.GetString(data), limits), conversion.Token);
+            var result = await Task.Run(() => IsArtwork(name) ? ArtworkImporter.Convert(data, name, settings, limits, vector, conversion.Token, edits) : GcodeProgram.Prepare(Encoding.ASCII.GetString(data), limits), conversion.Token);
             conversion.Token.ThrowIfCancellationRequested();
             var job = await Task.Run(() => library.Commit(name, result.Plan));
             prepared = result; selected = job; jobName = name; confirmed.Checked = false; artwork.Text = Description(); canvas.Invalidate();
@@ -287,11 +318,18 @@ public sealed class MainActivity : Activity
         if (resultCode != Android.App.Result.Ok || data?.Data is null) return;
         try
         {
-            if (requestCode == 20)
+            if (requestCode is 20 or 23)
             {
                 using var stream = ContentResolver!.OpenInputStream(data.Data) ?? throw new IOException("无法读取文件");
                 using var output = new MemoryStream(); byte[] buffer = new byte[8192]; int count;
                 while ((count = await stream.ReadAsync(buffer)) > 0) { if (output.Length + count > 16_000_000) throw new IOException("文件超过 16 MB"); await output.WriteAsync(buffer.AsMemory(0, count)); }
+                if (requestCode == 23)
+                {
+                    var preset = DevicePreset.Parse(Encoding.UTF8.GetString(output.ToArray()));
+                    areaWidth.Text = preset.Width.ToString(CultureInfo.InvariantCulture); areaHeight.Text = preset.Height.ToString(CultureInfo.InvariantCulture);
+                    maxFeed.Text = preset.MaxFeed.ToString(CultureInfo.InvariantCulture); maxPower.Text = preset.MaxPower.ToString(CultureInfo.InvariantCulture);
+                    confirmed.Checked = false; ShowMessage("设备配置已导入", preset.DisplayName + "\n请连接设备读取固件与参数核对"); return;
+                }
                 using var cursor = ContentResolver.Query(data.Data, null, null, null, null);
                 sourceName = "import.nc";
                 if (cursor?.MoveToFirst() == true) { int column = cursor.GetColumnIndex("_display_name"); if (column >= 0) sourceName = cursor.GetString(column) ?? sourceName; }
@@ -327,7 +365,7 @@ public sealed class MainActivity : Activity
     protected override void OnPause()
     {
         visible = false; handler.RemoveCallbacksAndMessages(null);
-        using var edit = preferences.Edit(); foreach (var input in savedInputs) edit!.PutString(input.Tag?.ToString() ?? "", input.Text); edit!.Apply(); base.OnPause();
+        using var edit = preferences.Edit(); foreach (var input in savedInputs) edit!.PutString(input.Tag?.ToString() ?? "", input.Text); edit!.PutString("selectedJob", selected?.Id.ToString() ?? ""); edit.Apply(); base.OnPause();
     }
     protected override void OnDestroy() { conversion?.Cancel(); conversion?.Dispose(); base.OnDestroy(); }
     private void Refresh()

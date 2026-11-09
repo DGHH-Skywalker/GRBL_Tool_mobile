@@ -17,7 +17,6 @@ public sealed class DeviceSession : IAsyncDisposable
     private readonly Guid id = Guid.NewGuid();
     private readonly long started = Stopwatch.GetTimestamp();
     private readonly Queue<string> management = new();
-    private readonly HashSet<Guid> commands = [];
     private readonly Queue<string> logs = new();
     private Task reader = Task.CompletedTask, ticker = Task.CompletedTask;
     private JobSender? sender;
@@ -25,6 +24,7 @@ public sealed class DeviceSession : IAsyncDisposable
     private string? error, pending;
     private DateTimeOffset lastStatus = DateTimeOffset.MinValue, commandDeadline, cancelDeadline;
     private double? maxPower;
+    private double[]? mpos, wco, wpos;
     private bool laserMode, disposed, running, homing, standardFrame;
     private long epoch, sequence;
     private string? savedExecution;
@@ -57,13 +57,13 @@ public sealed class DeviceSession : IAsyncDisposable
                         AddLog("< " + response);
                         if (response is Welcome welcome)
                         {
-                            epoch++; firmware = welcome.Text; pending = null; management.Clear(); maxPower = null; laserMode = false; homing = false; standardFrame = false;
+                            epoch++; firmware = welcome.Text; pending = null; management.Clear(); maxPower = null; laserMode = false; homing = false; standardFrame = false; mpos = wco = wpos = null;
                             if (sender is { IsTerminal: false }) sender.Receive(response, Now);
                         }
                         if (response is Message message)
                         {
                             if (message.Text.StartsWith("[VER:1.1", StringComparison.Ordinal)) firmware = "Grbl 1.1 " + message.Text;
-                            if (message.Text.StartsWith("$30=", StringComparison.Ordinal) && double.TryParse(message.Text.AsSpan(4), CultureInfo.InvariantCulture, out var p)) maxPower = p;
+                            if (message.Text.StartsWith("$30=", StringComparison.Ordinal) && double.TryParse(message.Text.AsSpan(4), CultureInfo.InvariantCulture, out var p)) maxPower = double.IsFinite(p) && p > 0 ? p : null;
                             if (message.Text.StartsWith("$32=", StringComparison.Ordinal)) laserMode = message.Text[4..] == "1";
                             if (message.Text.StartsWith("$22=", StringComparison.Ordinal)) homing = message.Text[4..] == "1";
                             if (message.Text.StartsWith("[GC:", StringComparison.Ordinal))
@@ -75,6 +75,15 @@ public sealed class DeviceSession : IAsyncDisposable
                         if (response is Status status)
                         {
                             machine = status.State; lastStatus = Now;
+                            double[]? Coordinates(string key)
+                            {
+                                if (!status.Fields.TryGetValue(key, out var text)) return null;
+                                var parts = text.Split(','); if (parts.Length < 2) return null;
+                                if (!double.TryParse(parts[0], CultureInfo.InvariantCulture, out var x) || !double.TryParse(parts[1], CultureInfo.InvariantCulture, out var y) || !double.IsFinite(x) || !double.IsFinite(y)) return null;
+                                return [x, y];
+                            }
+                            mpos = Coordinates("MPos") ?? mpos; wco = Coordinates("WCO") ?? wco;
+                            wpos = Coordinates("WPos") ?? (mpos is not null && wco is not null ? [mpos[0] - wco[0], mpos[1] - wco[1]] : null);
                             position = string.Join(" · ", status.Fields.Where(x => x.Key is "MPos" or "WPos" or "WCO").Select(x => x.Key + ":" + x.Value));
                         }
                         if (pending is not null && response is Acknowledgement or CommandError)
@@ -128,14 +137,14 @@ public sealed class DeviceSession : IAsyncDisposable
     }
     public Task ReadConfiguration() => UnderGate(async () =>
     {
-        RequireIdle(true); management.Enqueue("$I"); management.Enqueue("$$"); management.Enqueue("$G"); await SendManagement();
+        RequireIdle(true); maxPower = null; laserMode = false; standardFrame = false; management.Enqueue("$I"); management.Enqueue("$$"); management.Enqueue("$G"); await SendManagement();
     });
     public bool HomingEnabled => homing;
     public Task Home(bool hardwareConfirmed) => UnderGate(async () =>
     {
         RequireIdle(true);
         if (!homing || !hardwareConfirmed) throw new InvalidOperationException("回零需 $22=1 和开关/方向确认");
-        pending = "home"; commandDeadline = Now + TimeSpan.FromMinutes(2); await Write("$H\n");
+        wpos = mpos = wco = null; pending = "home"; commandDeadline = Now + TimeSpan.FromMinutes(2); await Write("$H\n");
     });
     public Task Unlock(bool confirmed) => UnderGate(async () =>
     {
@@ -157,24 +166,27 @@ public sealed class DeviceSession : IAsyncDisposable
     });
     public Task SetOrigin() => UnderGate(async () =>
     {
-        RequireIdle(); pending = "origin"; commandDeadline = Now + TimeSpan.FromSeconds(5);
+        RequireIdle(); wpos = wco = null; pending = "origin"; commandDeadline = Now + TimeSpan.FromSeconds(5);
         await Write("G10 L20 P1 X0 Y0\n");
     });
     public Task Start(StoredJob job, JobLimits limits, Guid commandId, long expectedEpoch, bool operatorConfirmed) => UnderGate(async () =>
     {
-        if (commands.Contains(commandId)) return;
+        var fingerprint = FormattableString.Invariant($"{job.Id}:{job.Hash}:{limits.Width}:{limits.Height}:{limits.MaxFeed}:{limits.MaxPower}");
+        if (store.IsDuplicateStart(commandId, fingerprint)) return;
         if (!operatorConfirmed || epoch != expectedEpoch) throw new InvalidOperationException("确认已失效，请重新检查");
         RequireIdle();
         if (!firmware.StartsWith("Grbl 1.1", StringComparison.Ordinal) || maxPower is null || maxPower < limits.MaxPower) throw new InvalidOperationException("请读取 GRBL 1.1 配置并匹配 $30 功率范围");
+        if (wpos is null || wpos[0] < -0.001 || wpos[1] < -0.001 || wpos[0] > limits.Width || wpos[1] > limits.Height)
+            throw new InvalidOperationException("需要有效且位于工作区域内的 WPos；请查询状态并设置工件原点");
         if (!standardFrame) throw new InvalidOperationException("请读取配置并确认 G54/G17/G94 模态");
         var analysis = GcodeProgram.Prepare(job.Content, limits);
         if (analysis.Plan.Sha256 != job.Hash) throw new InvalidDataException("任务内容已变化");
         if (analysis.EmitsLaser && !laserMode) throw new InvalidOperationException("激光加工需要设备 $32=1");
         // Keep UI policy outside protocol; profile confirmation acknowledges standard 1.1 barrier semantics.
-        sender = new JobSender(analysis.Plan, TimeSpan.FromSeconds(Math.Max(30, analysis.EstimatedSeconds + 10)));
-        sender.Start(Now, true);
-        store.Save(sender.Snapshot); // Durable intent precedes any device write.
-        commands.Add(commandId); error = null;
+        var candidate = new JobSender(analysis.Plan, TimeSpan.FromSeconds(Math.Max(30, analysis.EstimatedSeconds + 10)));
+        candidate.Start(Now, true);
+        store.RecordStart(commandId, fingerprint, candidate.Snapshot); // Atomic intent + dedup precede device writes.
+        sender = candidate; error = null;
         await FlushSender(); Publish();
     });
     public Task Pause(Guid executionId) => UnderGate(async () => { RequireExecution(executionId); sender!.Pause(); await FlushSender(); Publish(); });
@@ -229,7 +241,18 @@ public sealed class DeviceSession : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (disposed) return; disposed = true;
-        stop.Cancel(); await transport.DisposeAsync();
+        await gate.WaitAsync();
+        try
+        {
+            if (sender is { IsTerminal: false })
+            {
+                try { await Write("!"); } catch (Exception) { }
+                sender.TransportLost(); store.Save(sender.Snapshot);
+            }
+            stop.Cancel();
+        }
+        finally { gate.Release(); }
+        await transport.DisposeAsync();
         await Task.WhenAll(reader, ticker);
         if (sender is { IsTerminal: false }) { sender.TransportLost(); store.Save(sender.Snapshot); }
         connection = "Disconnected"; Publish(); stop.Dispose(); gate.Dispose();

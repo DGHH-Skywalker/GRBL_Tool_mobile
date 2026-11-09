@@ -10,9 +10,11 @@ using LaserMobile.Domain;
 using LaserMobile.Grbl;
 namespace LaserMobile.AndroidApp.Imaging;
 
+public sealed record ImageEdits(double Left = 0, double Top = 0, double Right = 1, double Bottom = 1, int QuarterTurns = 0);
+
 public static class ArtworkImporter
 {
-    public static ProgramAnalysis Convert(byte[] bytes, string name, RasterSettings settings, JobLimits limits, bool outline, CancellationToken token)
+    public static ProgramAnalysis Convert(byte[] bytes, string name, RasterSettings settings, JobLimits limits, bool outline, CancellationToken token, ImageEdits? edits = null)
     {
         if (bytes.Length > 16_000_000) throw new InvalidDataException("素材超过 16 MB");
         bool svg = name.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
@@ -33,14 +35,22 @@ public static class ArtworkImporter
             return Raster(bitmap, settings, limits, token);
         }
         using var data = SKData.CreateCopy(bytes); using var codec = SKCodec.Create(data) ?? throw new FormatException("图片格式不支持");
-        if ((long)codec.Info.Width * codec.Info.Height > 40_000_000) throw new FormatException("原图超过 4000 万像素");
+        if ((long)codec.Info.Width * codec.Info.Height > 12_000_000) throw new FormatException("原图超过 1200 万像素，请先缩小原图");
+        edits ??= new ImageEdits();
+        if (new[] { edits.Left, edits.Top, edits.Right, edits.Bottom }.Any(v => !double.IsFinite(v) || v < 0 || v > 1) || edits.Right <= edits.Left || edits.Bottom <= edits.Top || edits.QuarterTurns is < 0 or > 3)
+            throw new ArgumentException("裁剪范围需为 0–1 且右下角大于左上角");
+        double cropWidth = codec.Info.Width * (edits.Right - edits.Left), cropHeight = codec.Info.Height * (edits.Bottom - edits.Top);
+        if (edits.QuarterTurns % 2 == 1) (cropWidth, cropHeight) = (cropHeight, cropWidth);
         int width = Math.Clamp((int)Math.Ceiling(settings.WidthMillimeters / settings.LineSpacing), 1, 1500);
-        int height = Math.Max(1, (int)Math.Round(width * (double)codec.Info.Height / codec.Info.Width));
+        int height = Math.Max(1, (int)Math.Round(width * cropHeight / cropWidth));
         if ((long)width * height > 1_000_000) throw new FormatException("采样超过 100 万像素");
         using var decoded = SKBitmap.Decode(bytes) ?? throw new FormatException("图片解码失败");
         using var resized = new SKBitmap(width, height); using var c = new SKCanvas(resized);
         c.Clear(SKColors.White); using var paint = new SKPaint { IsAntialias = true };
-        c.DrawBitmap(decoded, new SKRect(0, 0, width, height), paint);
+        var crop = new SKRect((float)(edits.Left * decoded.Width), (float)(edits.Top * decoded.Height), (float)(edits.Right * decoded.Width), (float)(edits.Bottom * decoded.Height));
+        c.Translate(width / 2f, height / 2f); c.RotateDegrees(edits.QuarterTurns * 90);
+        float dw = edits.QuarterTurns % 2 == 0 ? width : height, dh = edits.QuarterTurns % 2 == 0 ? height : width;
+        c.DrawBitmap(decoded, crop, new SKRect(-dw / 2, -dh / 2, dw / 2, dh / 2), paint);
         return Raster(resized, settings, limits, token);
     }
     private static ProgramAnalysis Raster(SKBitmap bitmap, RasterSettings settings, JobLimits limits, CancellationToken token)
@@ -63,6 +73,7 @@ public static class ArtworkImporter
         using var stream = new MemoryStream(bytes);
         using var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = 2_000_000 });
         var document = XDocument.Load(reader);
+        if (document.Root?.Name.LocalName != "svg") throw new FormatException("根元素必须为 SVG");
         var nodes = document.Descendants().ToArray();
         if (nodes.Length > 20000 || nodes.Any(n => n.Ancestors().Count() > 32)) throw new FormatException("SVG 结构超限");
         foreach (var node in nodes)
@@ -82,7 +93,7 @@ public static class ArtworkImporter
             foreach (var e in xml.Descendants())
             {
                 token.ThrowIfCancellationRequested();
-                if (e.Attribute("transform") is not null || e.Attribute("style") is not null || e.Attribute("display") is not null || e.Attribute("visibility") is not null || e.Attribute("clip-path") is not null || e.Attribute("mask") is not null)
+                if (e.Attribute("transform") is not null || e.Attribute("style") is not null || e.Attribute("display") is not null || e.Attribute("visibility") is not null || e.Attribute("clip-path") is not null || e.Attribute("mask") is not null || e.Attribute("opacity") is not null || e.Attribute("fill-opacity") is not null || e.Attribute("stroke-opacity") is not null)
                     throw new FormatException("带样式、变换或裁剪的 SVG 请使用光栅模式或先展开为普通路径");
                 double V(string n, double d = 0) => double.TryParse(e.Attribute(n)?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) ? v : d;
                 SKPath? path = null;
@@ -109,7 +120,9 @@ public static class ArtworkImporter
                 using var measure = new SKPathMeasure(path, false);
                 do
                 {
-                    var points = new PathD(); int count = Math.Max(1, (int)Math.Ceiling(measure.Length * scale / 0.1));
+                    double samples = Math.Ceiling(measure.Length * scale / 0.1);
+                    if (!double.IsFinite(samples) || samples > 100000) throw new FormatException("轮廓长度或采样数超限");
+                    var points = new PathD(); int count = Math.Max(1, (int)samples);
                     if ((total += count) > 100000) throw new FormatException("轮廓段数超限");
                     for (int i = 0; i <= count; i++)
                     {
