@@ -92,7 +92,7 @@ public static class ArtworkImporter
         }
         return RasterCam.Generate(luminance, bitmap.Width, bitmap.Height, settings, limits, token);
     }
-    private static XDocument ValidateSvg(byte[] bytes)
+    public static XDocument ValidateSvg(byte[] bytes)
     {
         using var stream = new MemoryStream(bytes);
         using var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = 2_000_000 });
