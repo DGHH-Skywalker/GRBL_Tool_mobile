@@ -98,7 +98,7 @@ public sealed partial class MainActivity
         v.SetMaxLines(maxLines); v.SetTextColor(TextColor); v.SetPadding(0, Dp(3), 0, Dp(3)); parent.AddView(v); return v;
     }
     private LinearLayout Row(LinearLayout parent)
-    { var row = new LinearLayout(this) { Orientation = Orientation.Horizontal, Gravity = GravityFlags.CenterVertical }; parent.AddView(row); return row; }
+    { var row = new LinearLayout(this) { Orientation = Orientation.Horizontal }; row.SetGravity(GravityFlags.CenterVertical); parent.AddView(row); return row; }
     private EditText Number(LinearLayout page, string title, string value, string key)
     {
         Label(page, title, 12, 1);

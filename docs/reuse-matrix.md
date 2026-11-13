@@ -18,3 +18,5 @@
 禁止未评估就重写成熟 USB、图像渲染或几何库。新增替代库时提交接入结果与 ADR。
 
 图像导入已整理为独立的 LaserMobile.Imaging.Skia 项目，核心 CI 使用真实 Skia Linux native 运行 PNG/SVG 与 Clipper2 转换用例。Android 继续使用对应 Android native assets。
+
+0.4 沿用 Android 原生 Views、SkiaSharp、Svg.Skia、Clipper2 与现有 GRBL 解析器。文件类型检测通过 Skia 编码识别与完整解码、现有 SVG 验证和 G-code 预检完成。未新增运行时依赖。布局与文件选择规范来源及对应决策见 [MOBILE_UI.md](MOBILE_UI.md)。
