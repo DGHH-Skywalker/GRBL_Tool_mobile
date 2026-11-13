@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - run: dotnet workload restore GRBL.Tool.Mobile.Core.slnx
       - run: dotnet restore GRBL.Tool.Mobile.Core.slnx --locked-mode
       - run: dotnet test GRBL.Tool.Mobile.Core.slnx -c Release --no-restore --logger trx --results-directory artifacts/tests
       - run: dotnet run --project tools/LaserMobile.GrblSimulator -c Release --no-restore

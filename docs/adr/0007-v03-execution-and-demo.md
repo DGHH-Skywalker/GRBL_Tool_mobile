@@ -24,6 +24,10 @@ DemoTransport 实现同一 IByteTransport，通过异步响应、有限 RX、16 
 
 通知每秒刷新并携带当前 execution ID 的暂停操作；继续需回到页面确认。Partial wake lock 仅在活动执行期间持有。预览把 1024 个路径片段合成 Skia 路径块，按可见工作坐标范围剔除不可见块，替换作品时释放原生对象。
 
+## 可重复构建
+
+global.json 固定 SDK 10.0.403、禁用 SDK 自动滚动，并固定 workload set 10.0.403。该 workload set 对应 Mono 工具链 10.0.114 与 runtime/ILLink 10.0.14，保持依赖锁一致。核心和 Android 作业均先恢复固定 workload set，再执行 locked restore。模拟器冷启动读取无障碍树允许有限重试；业务断言保持失败即退出。
+
 ## 验证
 
 GitHub Actions 执行协议与会话回归、实际 Skia 转换、APK 签名校验及 Android API 35 模拟器脚本。模拟器脚本覆盖安装、内置演示、预览、开始、暂停、继续、后台完成、历史和参数修改阻止旧任务启动。真机性能与控制板兼容性独立验收。

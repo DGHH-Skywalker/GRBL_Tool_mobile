@@ -15,8 +15,16 @@ def adb(*args):
 
 
 def tree():
-    adb("shell", "uiautomator", "dump", "/sdcard/grbl-window.xml")
-    return ET.fromstring(adb("shell", "cat", "/sdcard/grbl-window.xml"))
+    # Cold-boot accessibility can briefly have no active root even after boot_completed.
+    last = ""
+    for _ in range(5):
+        try:
+            last = adb("shell", "uiautomator", "dump", "/sdcard/grbl-window.xml").decode()
+            return ET.fromstring(adb("shell", "cat", "/sdcard/grbl-window.xml"))
+        except (subprocess.CalledProcessError, ET.ParseError) as error:
+            last += str(error)
+            time.sleep(1)
+    raise AssertionError(f"Accessibility hierarchy unavailable after retries: {last}")
 
 
 def find(label, exact=True):
@@ -54,7 +62,10 @@ def tap(label, exact=True):
 
 def screenshot(name):
     (OUT / f"{name}.png").write_bytes(adb("exec-out", "screencap", "-p"))
-    (OUT / f"{name}.xml").write_bytes(adb("shell", "cat", "/sdcard/grbl-window.xml"))
+    try:
+        (OUT / f"{name}.xml").write_bytes(adb("shell", "cat", "/sdcard/grbl-window.xml"))
+    except subprocess.CalledProcessError as error:
+        (OUT / f"{name}-xml-error.txt").write_text(str(error))
 
 
 def launch():
