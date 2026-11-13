@@ -42,8 +42,11 @@ public sealed partial class MainActivity
 #pragma warning disable CA1422
         if (OperatingSystem.IsAndroidVersionAtLeast(30)) Window.SetDecorFitsSystemWindows(false);
 #pragma warning restore CA1422
-        status = Label(root, "未连接 · 可体验完整演示", 12, 2);
-        status.Background = Surface(Dark ? "#1C2C43" : "#E7F0FF"); status.SetPadding(Dp(12), Dp(4), Dp(12), Dp(4));
+        generationMode = (GenerationMode)Math.Clamp(preferences.GetInt("generationMode", 0), 0, AlgorithmNames.Length - 1);
+        statusBar = Row(root); statusBar.Background = Surface(Dark ? "#1C2C43" : "#E7F0FF");
+        status = Label(statusBar, "未连接 · 可体验完整演示", 12, 2); status.LayoutParameters = new LinearLayout.LayoutParams(0, -2, 1); status.SetPadding(Dp(12), Dp(4), Dp(8), Dp(4));
+        status.Click += (_, _) => { if (notice is not null && notice.Length > 26) ShowPagedText("详细信息", notice); };
+        noticeClose = Button(statusBar, "×", () => { ClearNotice(); return Task.CompletedTask; }); noticeClose.ContentDescription = "收起提示"; noticeClose.LayoutParameters = new LinearLayout.LayoutParams(Dp(48), Dp(48)); noticeClose.Visibility = ViewStates.Gone;
         root.AddView(new Space(this), new LinearLayout.LayoutParams(1, Dp(6)));
         var body = new FrameLayout(this); root.AddView(body, new LinearLayout.LayoutParams(-1, 0, 1));
         for (int i = 0; i < 4; i++)
@@ -52,6 +55,7 @@ public sealed partial class MainActivity
             page.SetPadding(Dp(8), Dp(6), Dp(8), Dp(6)); page.Background = Surface(Dark ? "#172130" : "#FFFFFF");
             body.AddView(page, new FrameLayout.LayoutParams(-1, -1)); pages.Add(page);
         }
+        appPanel = new FrameLayout(this) { Visibility = ViewStates.Gone, Clickable = true }; body.AddView(appPanel, new FrameLayout.LayoutParams(-1, -1));
         BuildDevice(); BuildArtwork(); BuildJob(); BuildHistory();
         bottomNavigation = Row(root); bottomNavigation.ContentDescription = "底部导航";
         string[] titles = ["设备", "作品", "加工", "历史"];
@@ -135,7 +139,7 @@ public sealed partial class MainActivity
     }
     private void ShowPage(int index)
     {
-        HideKeyboard();
+        ClosePanel(); currentPage = index; HideKeyboard();
         for (int i = 0; i < pages.Count; i++) { pages[i].Visibility = i == index ? ViewStates.Visible : ViewStates.Gone; StyleButton(navigation[i], i == index); navigationIcons[i]?.SetTint(i == index ? Android.Graphics.Color.White : TextColor); }
         if (index == 3) RefreshHistory();
     }
@@ -175,7 +179,12 @@ public sealed partial class MainActivity
     {
         var parts = Tabs(pages[0], ["连接", "定位", "参数", "维护"], out _); var p = parts[0];
         details = Label(p, "USB OTG 直连设备，或体验内置演示", 12, 3);
-        ports = new Spinner(this) { ContentDescription = "USB 串口" }; p.AddView(ports, new LinearLayout.LayoutParams(-1, Dp(48)));
+        ports = Button(p, "选择 USB 串口", () =>
+        {
+            if (devices.Count == 0) ShowError("请先扫描 USB，再选择串口");
+            else Choices("选择串口", devices.Select(d => d.Label).ToArray(), index => { selectedPort = index; ports.Text = devices[index].Label; return Task.CompletedTask; }, selectedPort);
+            return Task.CompletedTask;
+        });
         var row = Row(p); Button(row, "扫描 USB", Scan); Button(row, "授权并连接", Connect);
         row = Row(p); Button(row, "读取配置", () => Session().ReadConfiguration()); Button(row, "确认就绪", ArmDevice);
         Button(p, "体验完整演示", StartDemo);
@@ -204,7 +213,7 @@ public sealed partial class MainActivity
                 Button(form, "模拟断线", () => { Demo().InjectDisconnect(); return Task.CompletedTask; });
                 Button(form, "协议日志", () => { ShowPagedText("协议日志", string.Join('\n', Session().Log)); return Task.CompletedTask; });
                 var exports = Row(form); Button(exports, "导出日志", () => { ExportDocument(22, "grbl-diagnostics.txt"); return Task.CompletedTask; });
-                Button(exports, "关于", () => { ShowPagedText("GRBL Tool Mobile 0.4.0", "GPL-3.0-or-later\nUSBSerialForAndroid / SkiaSharp / Svg.Skia：MIT\nClipper2：Boost-1.0\nCyotek 抖动：MIT\n星光扩展独立维护，硬件资料待确认\n源码 github.com/DGHH-Skywalker/GRBL_Tool_mobile"); return Task.CompletedTask; });
+                Button(exports, "关于", () => { ShowPagedText("GRBL Tool Mobile 0.5.0", "GPL-3.0-or-later\nUSBSerialForAndroid / SkiaSharp / Svg.Skia：MIT\nClipper2：Boost-1.0\nCyotek 抖动：MIT\n星光扩展独立维护，硬件资料待确认\n源码 github.com/DGHH-Skywalker/GRBL_Tool_mobile"); return Task.CompletedTask; });
             }));
     }
     private async Task ArmDevice() { if (await Ask("设备就绪", "确认设备配置、工作原点与工作区域？")) await Session().Arm(true); }
@@ -221,19 +230,19 @@ public sealed partial class MainActivity
         previewHint = new TextView(this) { Text = "路径预览\n导入后生成任务", TextSize = 16, Gravity = GravityFlags.Center }; previewHint.SetTextColor(TextColor); frame.AddView(previewHint, new FrameLayout.LayoutParams(-1, -1));
         canvas.PaintSurface += (_, e) => DrawPreview(e); WirePreviewTouch();
         var row = Row(p); Button(row, "导入作品", ChooseImport); Button(row, "适合屏幕", () => { zoom = 1; panX = panY = 0; canvas.Invalidate(); return Task.CompletedTask; });
-        row = Row(p); generateButton = Button(row, "生成任务", Prepare); Button(row, "去加工", () => { ShowPage(2); return Task.CompletedTask; });
+        row = Row(p); generateButton = Button(row, "生成任务", async () => { if (converting) conversion?.Cancel(); else await Prepare(); }); Button(row, "去加工", () => { ShowPage(2); return Task.CompletedTask; });
         FormPager(parts[1],
             ("尺寸与精度", form => { artWidth = Number(form, "加工宽度 mm", "30", "artWidth"); spacing = Number(form, "光栅行距 mm", "0.15", "spacing"); }),
             ("速度与功率", form => { feed = Number(form, "加工进给 mm/min", "600", "feed"); power = Number(form, "加工最大功率 S", "100", "power"); }),
             ("图像算法", form =>
             {
                 gamma = Number(form, "Gamma", "1", "gamma");
-                var mode = new Spinner(this) { ContentDescription = "加工算法" }; mode.Adapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerDropDownItem, ["灰度扫描", "黑白阈值", "Floyd–Steinberg 抖动", "SVG 轮廓"]); form.AddView(mode, new LinearLayout.LayoutParams(-1, Dp(48)));
-                // Preserve existing CAM contracts; one visible selector maps to mutually exclusive modes.
-                var backing = new LinearLayout(this); threshold = Check(backing, "阈值"); dither = Check(backing, "抖动"); outline = Check(backing, "轮廓");
-                mode.ItemSelected += (_, e) => { threshold.Checked = e.Position == 1; dither.Checked = e.Position == 2; outline.Checked = e.Position == 3; };
+                algorithmButton = Button(form, AlgorithmNames[(int)generationMode], () => { Choices("选择生成方式", AlgorithmNames, index => { generationMode = (GenerationMode)index; algorithmButton.Text = AlgorithmNames[index]; InvalidateDraft(); return Task.CompletedTask; }, (int)generationMode); return Task.CompletedTask; }); algorithmButton.ContentDescription = "选择生成方式";
                 invert = Check(form, "反色");
-            }));
+            }),
+            ("最大加工尺寸 · 等比例缩小", form => { imageMaxWidth = Number(form, "最大图像宽度 mm", "40", "imageMaxWidth"); imageMaxHeight = Number(form, "最大图像高度 mm", "40", "imageMaxHeight"); }),
+            ("最大处理像素 · 等比例缩小", form => { pixelMaxWidth = Number(form, "最大处理宽度 px", "1000", "pixelMaxWidth"); pixelMaxHeight = Number(form, "最大处理高度 px", "1000", "pixelMaxHeight"); Label(form, "总采样预算 100 万像素", 12, 1); }),
+            ("实验性轮廓参数", form => { contourSensitivity = Number(form, "轮廓灵敏度（1–10）", "5", "contourSensitivity"); contourMinimum = Number(form, "最短轮廓长度 px", "8", "contourMinimum"); }));
         FormPager(parts[2],
             ("裁剪起点 · 0–1 比例", form => { cropLeft = Number(form, "裁剪左", "0", "cropLeft"); cropTop = Number(form, "裁剪上", "0", "cropTop"); }),
             ("裁剪终点 · 0–1 比例", form => { cropRight = Number(form, "裁剪右", "1", "cropRight"); cropBottom = Number(form, "裁剪下", "1", "cropBottom"); }),
@@ -311,20 +320,6 @@ public sealed partial class MainActivity
         }
         if (jobs.Count == 0) Label(libraryCards, "生成任务后显示在这里"); if (entries.Count == 0) Label(historyCards, "开始加工后显示执行记录");
         libraryPage.Text = $"{libraryIndex + 1}/{Math.Max(1, (jobs.Count + count - 1) / count)}"; historyPage.Text = $"{historyIndex + 1}/{Math.Max(1, (entries.Count + count - 1) / count)}";
-    }
-    private TextView DialogText(string text)
-    {
-        var view = new TextView(this) { Text = text, TextSize = 14 }; view.SetTextColor(TextColor); view.SetPadding(Dp(20), Dp(8), Dp(20), Dp(8)); return view;
-    }
-    private void ShowPagedText(string title, string message)
-    {
-        if (IsDestroyed) return;
-        // Explicit pages keep long logs/details reachable without a scrolling dialog.
-        var lines = message.Replace("\r", "").Split('\n').SelectMany(line => line.Length == 0 ? new[] { "" } : Enumerable.Range(0, (line.Length + 33) / 34).Select(i => line.Substring(i * 34, Math.Min(34, line.Length - i * 34)))).ToArray();
-        var chunks = lines.Chunk(5).Select(c => string.Join('\n', c)).ToArray(); if (chunks.Length == 0) chunks = ["暂无内容"];
-        int page = 0; var content = new LinearLayout(this) { Orientation = Orientation.Vertical }; var text = DialogText(chunks[0]); content.AddView(text);
-        var footer = Row(content); Button(footer, "上一页", () => { page = Math.Max(0, page - 1); text.Text = chunks[page]; return Task.CompletedTask; }); Button(footer, "下一页", () => { page = Math.Min(chunks.Length - 1, page + 1); text.Text = chunks[page]; return Task.CompletedTask; });
-        var builder = new AlertDialog.Builder(this); builder.SetTitle(title); builder.SetView(content); builder.SetPositiveButton("关闭", (_, _) => { }); builder.Show();
     }
     protected override void OnSaveInstanceState(Bundle outState)
     { if (pendingImport is { } kind) outState.PutInt("pendingImport", (int)kind); base.OnSaveInstanceState(outState); }

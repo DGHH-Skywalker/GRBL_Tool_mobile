@@ -13,10 +13,10 @@ public sealed partial class MainActivity
 {
     private Task ChooseImport()
     {
-        if (importing) return Task.CompletedTask;
-        var builder = new AlertDialog.Builder(this); builder.SetTitle("选择导入类型");
-        builder.SetItems(["位图 · PNG / JPG / WebP / BMP", "矢量 · SVG", "加工文件 · NC / G-code / GC / NGC / TAP / CNC"], (_, e) => OpenPicker(e.Which switch { 0 => ImportKind.Bitmap, 1 => ImportKind.Svg, _ => ImportKind.Gcode }));
-        builder.SetNegativeButton("取消", (_, _) => { }); builder.Show(); return Task.CompletedTask;
+        if (importing || converting) { ShowError("请先完成或取消当前图像处理"); return Task.CompletedTask; }
+        Choices("导入作品", ["位图 · PNG / JPG / WebP / BMP", "矢量 · SVG", "加工文件 · NC / G-code / GC / NGC / TAP / CNC"], index =>
+        { OpenPicker(index switch { 0 => ImportKind.Bitmap, 1 => ImportKind.Svg, _ => ImportKind.Gcode }); return Task.CompletedTask; });
+        return Task.CompletedTask;
     }
     private void OpenPicker(ImportKind kind)
     {
@@ -84,7 +84,7 @@ public sealed partial class MainActivity
                     maxFeed.Text = preset.MaxFeed.ToString(CultureInfo.InvariantCulture); maxPower.Text = preset.MaxPower.ToString(CultureInfo.InvariantCulture);
                     artwork.Text = previous; ShowMessage("配置已导入", preset.DisplayName + "\n请读取设备配置后核对"); return;
                 }
-                source = accepted.Bytes; sourceName = accepted.Name; selected = null; prepared = null; preview?.Dispose(); preview = null; quarterTurns = 0;
+                source = accepted.Bytes; sourceName = accepted.Name; selected = null; prepared = null; preview?.Dispose(); preview = null; imagePreparation = null; quarterTurns = 0; ClearNotice();
                 InvalidateDraft(); zoom = 1; panX = panY = 0; artwork.Text = $"{sourceName}\n已检查 · {source.Length / 1000.0:0.#} KB";
                 canvas.Invalidate(); jobCanvas?.Invalidate(); ShowPage(1); artworkTabs(0);
             }
@@ -92,7 +92,7 @@ public sealed partial class MainActivity
             {
                 using var stream = ContentResolver!.OpenOutputStream(uri) ?? throw new IOException("无法写入文件");
                 string content = requestCode == 21 ? library.Read(selected?.Id ?? throw new InvalidOperationException("任务未选择")).Content
-                    : "GRBL Tool Mobile 0.4.0\n" + (CurrentSession()?.Snapshot.ToString() ?? "Disconnected") + "\n" + string.Join('\n', CurrentSession()?.Log ?? []);
+                    : "GRBL Tool Mobile 0.5.0\n" + (CurrentSession()?.Snapshot.ToString() ?? "Disconnected") + "\n" + string.Join('\n', CurrentSession()?.Log ?? []);
                 await stream.WriteAsync(Encoding.UTF8.GetBytes(content));
             }
         }

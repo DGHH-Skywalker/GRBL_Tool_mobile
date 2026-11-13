@@ -35,8 +35,14 @@ public sealed partial class MainActivity : Activity
     private TextView status = null!, details = null!, artwork = null!;
     private EditText baud = null!, areaWidth = null!, areaHeight = null!, maxFeed = null!, maxPower = null!, artWidth = null!, spacing = null!, feed = null!, power = null!, gamma = null!, jogStep = null!, cropLeft = null!, cropTop = null!, cropRight = null!, cropBottom = null!;
     private int quarterTurns;
-    private CheckBox invert = null!, dither = null!, threshold = null!, outline = null!, confirmed = null!;
-    private Spinner ports = null!;
+    private CheckBox invert = null!, confirmed = null!;
+    private Button ports = null!, algorithmButton = null!;
+    private int selectedPort = -1;
+    private enum GenerationMode { Grayscale, ExperimentalContours, Threshold, FloydSteinberg, SvgOutline }
+    private GenerationMode generationMode;
+    private static readonly string[] AlgorithmNames = ["灰度光栅", "实验：轮廓提取", "黑白阈值", "Floyd–Steinberg 抖动", "SVG 路径轮廓"];
+    private EditText imageMaxWidth = null!, imageMaxHeight = null!, pixelMaxWidth = null!, pixelMaxHeight = null!, contourSensitivity = null!, contourMinimum = null!;
+    private ImagePreparation? imagePreparation;
     private readonly List<(UsbSerialPort Port, string Label)> devices = [];
     private readonly List<LinearLayout> pages = [];
     private readonly List<Button> navigation = [];
@@ -81,13 +87,14 @@ public sealed partial class MainActivity : Activity
         var manager = (UsbManager)GetSystemService(UsbService)!;
         var drivers = await Task.Run(() => new UsbSerialProber(UsbSerialProber.DefaultProbeTable).FindAllDrivers(manager));
         devices.Clear(); foreach (var d in drivers) foreach (var port in d.Ports) devices.Add((port, $"{d.Device.VendorId:X4}:{d.Device.ProductId:X4} 端口 {port.PortNumber}"));
-        ports.Adapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerDropDownItem, devices.Select(d => d.Label).DefaultIfEmpty("未发现 USB 串口").ToArray());
+        selectedPort = devices.Count == 0 ? -1 : 0; ports.Text = selectedPort < 0 ? "未发现 USB 串口" : devices[selectedPort].Label;
+        if (devices.Count == 0) ShowError("未发现 USB 串口，请检查 OTG 连接后重试"); else ClearNotice();
     }
     private async Task Connect()
     {
         if (SimulationService.Current is not null) throw new InvalidOperationException("请先断开演示设备");
-        if (ports.SelectedItemPosition < 0 || ports.SelectedItemPosition >= devices.Count) throw new InvalidOperationException("请扫描并选择设备");
-        var port = devices[ports.SelectedItemPosition].Port; var manager = (UsbManager)GetSystemService(UsbService)!;
+        if (selectedPort < 0 || selectedPort >= devices.Count) throw new InvalidOperationException("请先扫描 USB 并选择串口");
+        var port = devices[selectedPort].Port; var manager = (UsbManager)GetSystemService(UsbService)!;
         if (!await UsbPermissionReceiver.Request(this, manager, port.Driver.Device)) throw new UnauthorizedAccessException("USB 授权被拒绝");
         if (OperatingSystem.IsAndroidVersionAtLeast(33) && CheckSelfPermission(Android.Manifest.Permission.PostNotifications) != Android.Content.PM.Permission.Granted) RequestPermissions([Android.Manifest.Permission.PostNotifications], 100);
         using var intent = new Intent(this, typeof(DeviceExecutionService)); intent.PutExtra("device", port.Driver.Device.DeviceId); intent.PutExtra("port", port.PortNumber); intent.PutExtra("baud", checked((int)Value(baud))); StartForegroundService(intent);
@@ -113,7 +120,7 @@ public sealed partial class MainActivity : Activity
         maxFeed.Text = limits.MaxFeed.ToString(CultureInfo.InvariantCulture); maxPower.Text = limits.MaxPower.ToString(CultureInfo.InvariantCulture);
         source = Encoding.ASCII.GetBytes(job.Content); sourceName = Path.ChangeExtension(job.Name, ".nc"); quarterTurns = 0;
         if (IsDestroyed) return;
-        selected = job; prepared = result; jobName = job.Name; draft.Commit(draft.Revision);
+        selected = job; prepared = result; jobName = job.Name; imagePreparation = null; draft.Commit(draft.Revision);
         preview?.Dispose(); preview = new ToolpathPreview(result); artwork.Text = Description(); confirmed.Checked = false; canvas.Invalidate(); jobCanvas?.Invalidate();
     }
     private async Task StartDemo()
@@ -142,26 +149,37 @@ public sealed partial class MainActivity : Activity
         if (source is null || converting) return;
         var data = source; var name = sourceName; var limits = Limits(); var revision = draft.Revision;
         bool image = IsArtwork(name);
-        var settings = image ? new RasterSettings(Value(artWidth), Value(spacing), Value(feed), Value(power), Value(gamma), invert.Checked, true, dither.Checked ? RasterMode.FloydSteinberg : threshold.Checked ? RasterMode.Threshold : RasterMode.Grayscale) : new RasterSettings(1, .1, 1, 1);
-        bool vector = outline.Checked;
+        var settings = image ? new RasterSettings(Value(artWidth), Value(spacing), Value(feed), Value(power), Value(gamma), invert.Checked, true, generationMode == GenerationMode.FloydSteinberg ? RasterMode.FloydSteinberg : generationMode == GenerationMode.Threshold ? RasterMode.Threshold : RasterMode.Grayscale) : new RasterSettings(1, .1, 1, 1);
+        bool vector = generationMode == GenerationMode.SvgOutline;
+        var options = image ? ProcessingOptions() : null;
+        var contour = image && generationMode == GenerationMode.ExperimentalContours ? new ContourSettings(Value(contourSensitivity), Value(contourMinimum)) : null;
         var edits = image ? new ImageEdits(Value(cropLeft), Value(cropTop), Value(cropRight), Value(cropBottom), quarterTurns) : new ImageEdits();
         converting = true; conversion?.Dispose(); conversion = new CancellationTokenSource();
         try
         {
             artwork.Text = "正在准备任务…";
-            var result = await Task.Run(() => IsArtwork(name) ? ArtworkImporter.Convert(data, name, settings, limits, vector, conversion.Token, edits) : GcodeProgram.Prepare(Encoding.ASCII.GetString(data), limits), conversion.Token);
+            var converted = await Task.Run(() => image ? ArtworkImporter.ConvertDetailed(data, name, settings, limits, vector, conversion.Token, edits, options, contour) : null, conversion.Token);
+            var result = converted?.Analysis ?? await Task.Run(() => GcodeProgram.Prepare(Encoding.ASCII.GetString(data), limits), conversion.Token);
             conversion.Token.ThrowIfCancellationRequested();
             if (revision != draft.Revision) throw new InvalidOperationException("输入已更新，请重新生成任务");
-            string parameters = IsArtwork(name) ? $"宽 {settings.WidthMillimeters:0.##} mm · 行距 {settings.LineSpacing:0.###} mm · F{settings.Feed:0.##} · S{settings.Power:0.##} · Gamma {settings.Gamma:0.##} · {settings.Mode} · 反色 {settings.Invert} · 旋转 {quarterTurns * 90}° · 裁剪 {edits}" : "G-code 指令参数以保存文件为准";
+            string parameters = image ? $"宽 {settings.WidthMillimeters:0.##} mm · 行距 {settings.LineSpacing:0.###} mm · F{settings.Feed:0.##} · S{settings.Power:0.##} · Gamma {settings.Gamma:0.##} · {AlgorithmNames[(int)generationMode]} · 反色 {settings.Invert} · 旋转 {quarterTurns * 90}° · 裁剪 {edits}" : "G-code 指令参数以保存文件为准";
+            if (converted is not null) parameters += FormattableString.Invariant($" · 实际 {converted.Image.WidthMillimeters:0.###}×{converted.Image.HeightMillimeters:0.###} mm · {converted.Image.WidthPixels}×{converted.Image.HeightPixels} px · 上限 {options} · 轮廓 {contour}");
             var job = await Task.Run(() => library.Commit(name, result.Plan, limits, parameters));
             if (conversion.IsCancellationRequested || IsDestroyed) { library.Delete(job.Id); return; }
             if (!draft.Commit(revision)) { library.Delete(job.Id); throw new InvalidOperationException("输入已更新，请重新生成任务"); }
-            prepared = result; selected = job; jobName = name; preview?.Dispose(); preview = new ToolpathPreview(result); confirmed.Checked = false; artwork.Text = Description(); canvas.Invalidate(); jobCanvas?.Invalidate();
+            prepared = result; selected = job; jobName = name; imagePreparation = converted?.Image; ClearNotice(); preview?.Dispose(); preview = new ToolpathPreview(result); confirmed.Checked = false; artwork.Text = Description(); canvas.Invalidate(); jobCanvas?.Invalidate();
         }
+        catch (System.OperationCanceledException) { if (!IsDestroyed) artwork.Text = "已取消生成，可调整参数后重试"; }
         finally { converting = false; }
     }
+    private ImageProcessingOptions ProcessingOptions()
+    {
+        double w = Value(pixelMaxWidth), h = Value(pixelMaxHeight);
+        if (w != Math.Truncate(w) || h != Math.Truncate(h) || w is < 16 or > 4096 || h is < 16 or > 4096) throw new ArgumentException("最大处理像素需为 16–4096 的整数");
+        var value = new ImageProcessingOptions((int)w, (int)h, Value(imageMaxWidth), Value(imageMaxHeight)); value.Validate(); return value;
+    }
     private static bool IsArtwork(string name) => ImportFormats.ForName(name).Kind is ImportKind.Bitmap or ImportKind.Svg;
-    private string Description() => prepared is null ? "尚未生成" : $"{jobName}\n{prepared.Plan.Lines.Count} 行 · {prepared.MaxX:0.##} × {prepared.MaxY:0.##} mm · {TimeSpan.FromSeconds(prepared.EstimatedSeconds):hh\\:mm\\:ss}";
+    private string Description() => prepared is null ? "尚未生成" : $"{jobName}\n{prepared.Plan.Lines.Count} 行 · {(imagePreparation?.WidthMillimeters ?? prepared.MaxX):0.##} × {(imagePreparation?.HeightMillimeters ?? prepared.MaxY):0.##} mm · {TimeSpan.FromSeconds(prepared.EstimatedSeconds):hh\\:mm\\:ss}" + (imagePreparation is null ? "" : $"\n处理 {imagePreparation.WidthPixels}×{imagePreparation.HeightPixels} px · {AlgorithmNames[(int)generationMode]}");
     private async Task StartSelected(bool frame)
     {
         if (selected is null || !draft.IsCurrent) throw new InvalidOperationException("请按当前参数重新生成任务");
@@ -189,31 +207,18 @@ public sealed partial class MainActivity : Activity
             (float)prepared.MinX + (e.Info.Width - 20 - panX) / scale, (float)prepared.MinY + (e.Info.Height - 20 + panY) / scale);
         preview?.Draw(c, viewport, scale);
     }
-    private Task<bool> Ask(string title, string message)
-    {
-        var tcs = new TaskCompletionSource<bool>();
-        var builder = new AlertDialog.Builder(this); builder.SetTitle(title); builder.SetView(DialogText(message));
-        builder.SetPositiveButton("确认", (_, _) => tcs.TrySetResult(true)); builder.SetNegativeButton("取消", (_, _) => tcs.TrySetResult(false));
-        var dialog = builder.Create() ?? throw new InvalidOperationException("无法创建对话框");
-        dialog.SetOnCancelListener(new DialogCancel(() => tcs.TrySetResult(false))); dialog.Show(); return tcs.Task;
-    }
-    private sealed class DialogCancel(Action action) : Java.Lang.Object, IDialogInterfaceOnCancelListener { public void OnCancel(IDialogInterface? dialog) => action(); }
-    private void ShowMessage(string title, string message) => ShowPagedText(title, message);
-    private void ShowError(string message) => ShowMessage("操作提示", message);
     protected override void OnResume() { base.OnResume(); visible = true; Refresh(); }
     protected override void OnPause()
     {
         visible = false; handler.RemoveCallbacksAndMessages(null);
-        using var edit = preferences.Edit(); foreach (var input in savedInputs) edit!.PutString(input.Tag?.ToString() ?? "", input.Text); edit!.PutString("selectedJob", draft.IsCurrent ? selected?.Id.ToString() ?? "" : ""); edit.Apply(); base.OnPause();
+        using var edit = preferences.Edit(); foreach (var input in savedInputs) edit!.PutString(input.Tag?.ToString() ?? "", input.Text); edit!.PutInt("generationMode", (int)generationMode); edit.PutString("selectedJob", draft.IsCurrent ? selected?.Id.ToString() ?? "" : ""); edit.Apply(); base.OnPause();
     }
-    protected override void OnDestroy() { conversion?.Cancel(); preview?.Dispose(); foreach (var icon in navigationIcons) icon?.Dispose(); base.OnDestroy(); }
+    protected override void OnDestroy() { ClosePanel(); conversion?.Cancel(); preview?.Dispose(); foreach (var icon in navigationIcons) icon?.Dispose(); base.OnDestroy(); }
     private static void SetLabel(TextView view, string text) { if (view.Text != text) view.Text = text; }
     private void Refresh()
     {
         if (!visible) return;
-        var snapshot = CurrentSession()?.Snapshot;
-        string mode = SimulationService.Current?.Session is not null ? "演示设备" : "USB";
-        SetLabel(status, snapshot is null ? DeviceExecutionService.Current?.ConnectionError ?? SimulationService.Current?.ConnectionError ?? "未连接 · 可体验完整演示" : $"{mode} · {(snapshot.Connection == "Connected" ? snapshot.Machine : "连接中断")} · {(snapshot.IsArmed ? "已就绪" : "待确认就绪")}\n{StateName(snapshot.Execution?.State)}");
+        var snapshot = CurrentSession()?.Snapshot; RefreshStatus();
         var execution = snapshot?.Execution; bool active = SessionMonitor.Active(execution?.State);
         bool ready = selected is not null && draft.IsCurrent && !converting && !active && snapshot is { Connection: "Connected", Machine: "Idle", IsArmed: true };
         startButton.Enabled = ready && confirmed.Checked; frameButton.Enabled = ready && confirmed.Checked;
@@ -227,7 +232,8 @@ public sealed partial class MainActivity : Activity
         SetLabel(executionText, execution is null ? "等待开始" : $"{StateName(execution.State)} · 确认 {execution.AcknowledgedLines}/{execution.TotalLines} 行" + (execution.Error is null ? "" : "\n" + execution.Error));
         if (snapshot is not null) SetLabel(details, $"{snapshot.Firmware}\n{snapshot.Position}\n$30={snapshot.MaxPower?.ToString() ?? "未知"} · {(snapshot.LaserMode ? "激光模式" : "普通模式")}");
         SetLabel(positionText, snapshot?.Position ?? "连接设备后显示工作坐标");
-        generateButton.Enabled = source is not null && !converting && !importing;
+        generateButton.Enabled = source is not null && !importing;
+        generateButton.Text = converting ? "取消生成" : "生成任务"; generateButton.ContentDescription = generateButton.Text;
         if (previewHint is not null) previewHint.Visibility = prepared is null ? ViewStates.Visible : ViewStates.Gone;
         handler.PostDelayed(Refresh, 250);
     }

@@ -76,6 +76,8 @@ def tap(label, exact=True):
 def no_scroll():
     nodes = [node for node in tree().iter("node") if node.get("package") == APP]
     assert nodes, "App hierarchy missing"
+    assert not any(n.get("resource-id") in ("android:id/alertTitle", "android:id/button1", "android:id/button2") for n in nodes), "App opened a platform alert dialog"
+    assert not any(n.get("class") == "android.widget.Spinner" for n in nodes), "App opened a platform choice spinner"
     assert not any("ScrollView" in node.get("class", "") for node in nodes), "App has a scrolling container"
     dimensions = re.findall(r"(\d+)x(\d+)", adb("shell", "wm", "size").decode())[-1]
     width, height = map(int, dimensions)
@@ -96,6 +98,18 @@ def fixture_files():
     png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 16, 8, 8, 2, 0, 0, 0))
     png += chunk(b"IDAT", zlib.compress((b"\0" + b"\0\0\0" * 16) * 8)) + chunk(b"IEND", b"")
     (directory / "valid.png").write_bytes(png)
+    width, height = 1600, 800
+    rows = bytearray()
+    for y in range(height):
+        row = bytearray([235, 235, 235] * width)
+        if 150 <= y < 650:
+            row[200 * 3:1400 * 3] = bytes([190, 190, 190]) * 1200
+        if 300 <= y < 500:
+            row[600 * 3:1000 * 3] = bytes([235, 235, 235]) * 400
+        rows.extend(b"\0" + row)
+    complex_png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    complex_png += chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+    (directory / "complex.png").write_bytes(complex_png)
     (directory / "fake.png").write_bytes(b"%PDF-1.7 disguised document")
     (directory / "unsupported.pdf").write_bytes(b"%PDF-1.7 unsupported")
     for path in directory.iterdir():
@@ -137,12 +151,23 @@ try:
     wait("体验完整演示", timeout=60)
     no_scroll()
     screenshot("01-device-single-screen")
+    tap("授权并连接")
+    wait("请先扫描 USB")
+    no_scroll()
+    assert find("上一页") is None and find("下一页") is None
+    screenshot("01b-inline-notice")
+    tap("收起提示")
     tap("体验完整演示")
     wait("GRBL-demo.nc")
     no_scroll()
     screenshot("02-artwork-preview")
     tap("加工")
     tap("已检查现场", exact=False)
+    tap("开始加工")
+    no_scroll()
+    screenshot("02b-in-app-confirmation")
+    tap("返回")
+    wait("等待任务")
     tap("开始加工")
     tap("确认")
     tap("暂停")
@@ -167,7 +192,7 @@ try:
     choose_bitmap("fake.png")
     wait("图片内容无效")
     screenshot("06-disguised-file-rejected")
-    tap("关闭")
+    tap("收起提示")
     wait("GRBL-demo.nc")
     choose_bitmap("valid.png")
     wait("valid.png")
@@ -175,13 +200,47 @@ try:
     wait("行 ·", timeout=40)
     no_scroll()
     screenshot("07-supported-file-import")
+    choose_bitmap("complex.png")
+    wait("complex.png")
     tap("加工参数")
-    tap("加工宽度 mm")
-    adb("shell", "input", "keyevent", "KEYCODE_MOVE_END")
-    adb("shell", "input", "keyevent", "KEYCODE_DEL")
-    adb("shell", "input", "keyevent", "KEYCODE_DEL")
-    adb("shell", "input", "text", "25")
-    adb("shell", "input", "keyevent", "4")
+    tap("下一步")
+    tap("下一步")
+    tap("选择生成方式")
+    wait("选择生成方式")
+    no_scroll()
+    screenshot("07b-app-algorithm-picker")
+    tap("实验：轮廓提取")
+    tap("下一步")
+    def set_number(label, value):
+        tap(label)
+        adb("shell", "input", "keyevent", "KEYCODE_MOVE_END")
+        adb("shell", "input", "keyevent", "67", "67", "67", "67", "67", "67")
+        adb("shell", "input", "text", value)
+        adb("shell", "input", "keyevent", "4")
+    set_number("最大图像宽度 mm", "10")
+    set_number("最大图像高度 mm", "10")
+    tap("下一步")
+    set_number("最大处理宽度 px", "128")
+    set_number("最大处理高度 px", "128")
+    tap("预览")
+    tap("生成任务")
+    wait("处理 128×64 px", timeout=45)
+    wait("10 × 5 mm")
+    no_scroll()
+    screenshot("07c-contour-and-proportional-fit")
+    tap("加工参数")
+    tap("上一步")
+    tap("上一步")
+    tap("选择生成方式")
+    tap("黑白阈值")
+    tap("预览")
+    tap("生成任务")
+    wait("黑白阈值", timeout=45)
+    screenshot("07d-switch-back-raster")
+    tap("加工参数")
+    tap("上一步")
+    tap("上一步")
+    set_number("加工宽度 mm", "25")
     tap("加工")
     wait("输入已变化")
     assert find("开始加工").get("enabled") == "false"
@@ -220,7 +279,7 @@ try:
     tap("下一步")
     no_scroll()
     screenshot("11-adjustment-pages")
-    (OUT / "result.txt").write_text("PASS: fixed screens, bottom navigation, import allowlist, disguised-file rejection, valid PNG import, pause/resume, background completion, history, dirty input, compact 360x640 at 1.3 font scale, keyboard layout; zero app scrolling gestures\n")
+    (OUT / "result.txt").write_text("PASS: fixed screens, bottom navigation, import allowlist, disguised-file rejection, valid PNG import, pause/resume, background completion, history, dirty input, compact 360x640 at 1.3 font scale, keyboard layout; zero app scrolling gestures, no app-owned platform dialogs/spinners, inline errors, app confirmations, uniform physical/pixel fit, experimental contours and switching back\n")
 finally:
     (OUT / "logcat.txt").write_bytes(adb("logcat", "-d", "-t", "2500"))
     screenshot("last-screen")

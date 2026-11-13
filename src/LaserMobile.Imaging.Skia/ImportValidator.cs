@@ -27,11 +27,11 @@ public static class ImportValidator
                         _ => false
                     };
                     if (!match) throw new FormatException("图片编码与扩展名不一致");
-                    if (codec.Info.Width <= 0 || codec.Info.Height <= 0 || (long)codec.Info.Width * codec.Info.Height > 12_000_000)
-                        throw new FormatException("图片尺寸无效或超过 1200 万像素");
+                    if (codec.Info.Width <= 0 || codec.Info.Height <= 0 || (long)codec.Info.Width * codec.Info.Height > ImageSizing.MaximumSourcePixels)
+                        throw new FormatException("图片尺寸无效或超过 4800 万像素解码预算");
                     if (codec.FrameCount > 1) throw new FormatException("请将动态图像转换为静态图片后导入");
-                    using var bitmap = new SKBitmap(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
-                    if (codec.GetPixels(bitmap.Info, bitmap.GetPixels()) != SKCodecResult.Success) throw new FormatException("图片不完整或解码失败");
+                    var bounded = ImageSizing.FitPixels(codec.Info.Width, codec.Info.Height, 1000, 1000);
+                    using var bitmap = ImageSizing.Decode(codec, bounded.Width, bounded.Height);
                 }
                 break;
             case ImportKind.Svg: ArtworkImporter.ValidateSvg(bytes); break;

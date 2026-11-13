@@ -5,7 +5,7 @@ using LaserMobile.Grbl;
 namespace LaserMobile.Cam;
 
 public enum RasterMode { Grayscale, Threshold, FloydSteinberg }
-public sealed record RasterSettings(double WidthMillimeters, double LineSpacing, double Feed, double Power, double Gamma = 1, bool Invert = false, bool Bidirectional = true, RasterMode Mode = RasterMode.Grayscale);
+public sealed record RasterSettings(double WidthMillimeters, double LineSpacing, double Feed, double Power, double Gamma = 1, bool Invert = false, bool Bidirectional = true, RasterMode Mode = RasterMode.Grayscale, double? HeightMillimeters = null);
 public static class RasterCam
 {
     public static ProgramAnalysis Generate(byte[] luminance, int width, int height, RasterSettings settings, JobLimits limits, CancellationToken token = default)
@@ -13,6 +13,7 @@ public static class RasterCam
         limits.Validate();
         if (width < 1 || height < 1 || (long)width * height > 1_000_000 || luminance.Length != width * height) throw new ArgumentException("图像采样预算超限");
         if (!double.IsFinite(settings.WidthMillimeters) || settings.WidthMillimeters <= 0 || settings.WidthMillimeters > limits.Width || !double.IsFinite(settings.LineSpacing) || settings.LineSpacing is < 0.05 or > 2 || !double.IsFinite(settings.Gamma) || settings.Gamma is < 0.1 or > 5 || settings.Feed <= 0 || settings.Feed > limits.MaxFeed || settings.Power <= 0 || settings.Power > limits.MaxPower) throw new ArgumentException("转换参数超限");
+        if (settings.HeightMillimeters is { } requestedHeight && (!double.IsFinite(requestedHeight) || requestedHeight <= 0 || requestedHeight > limits.Height)) throw new ArgumentException("图像高度超出工作区域");
         var values = luminance.Select(v => (byte)Math.Clamp(Math.Round(Math.Pow(v / 255.0, settings.Gamma) * 255), 0, 255)).ToArray();
         if (settings.Invert) for (int i = 0; i < values.Length; i++) values[i] = (byte)(255 - values[i]);
         if (settings.Mode == RasterMode.FloydSteinberg) Diffusion.Apply(values, width, height);
@@ -22,7 +23,7 @@ public static class RasterCam
         {
             token.ThrowIfCancellationRequested();
             bool reverse = settings.Bidirectional && row % 2 == 1;
-            double y = row * settings.LineSpacing;
+            double y = settings.HeightMillimeters is { } physicalHeight ? row * physicalHeight / Math.Max(1, height - 1) : row * settings.LineSpacing;
             if (y > limits.Height) throw new ArgumentException("图像高度超出工作区域");
             result.AppendLine(FormattableString.Invariant($"G0 X{(reverse ? settings.WidthMillimeters : 0):0.###} Y{y:0.###}"));
 

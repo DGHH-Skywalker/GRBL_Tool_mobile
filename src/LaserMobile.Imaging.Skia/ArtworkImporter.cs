@@ -14,70 +14,78 @@ public sealed record ImageEdits(double Left = 0, double Top = 0, double Right = 
 
 public static class ArtworkImporter
 {
-    public static ProgramAnalysis Convert(byte[] bytes, string name, RasterSettings settings, JobLimits limits, bool outline, CancellationToken token, ImageEdits? edits = null)
+    public sealed record Conversion(ProgramAnalysis Analysis, ImagePreparation Image);
+    public static ProgramAnalysis Convert(byte[] bytes, string name, RasterSettings settings, JobLimits limits, bool outline, CancellationToken token, ImageEdits? edits = null, ImageProcessingOptions? options = null, ContourSettings? contours = null)
+        => ConvertDetailed(bytes, name, settings, limits, outline, token, edits, options, contours).Analysis;
+    public static Conversion ConvertDetailed(byte[] bytes, string name, RasterSettings settings, JobLimits limits, bool outline, CancellationToken token, ImageEdits? edits = null, ImageProcessingOptions? options = null, ContourSettings? contours = null)
     {
+        token.ThrowIfCancellationRequested();
         if (bytes.Length > 16_000_000) throw new InvalidDataException("素材超过 16 MB");
-        bool svg = name.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
-        if (svg)
+        options ??= ImageProcessingOptions.For(limits); options.Validate();
+        if (!double.IsFinite(settings.LineSpacing) || settings.LineSpacing is < .05 or > 2 || !double.IsFinite(settings.Gamma) || settings.Gamma is < .1 or > 5 || !double.IsFinite(settings.Feed) || settings.Feed <= 0 || settings.Feed > limits.MaxFeed || !double.IsFinite(settings.Power) || settings.Power <= 0 || settings.Power > limits.MaxPower) throw new ArgumentException("转换参数超限");
+        if (name.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
         {
             var xml = ValidateSvg(bytes);
-            if (outline) return Outline(xml, settings, limits, token);
+            if (outline && contours is null)
+            {
+                var analysis = Outline(xml, settings, limits, token, options);
+                return new(analysis, new(0, 0, analysis.MaxX, analysis.MaxY));
+            }
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(xml.ToString()));
             using var document = new SKSvg(); var picture = document.Load(stream) ?? throw new FormatException("SVG 解码失败");
             var bounds = picture.CullRect;
-            if (bounds.Width <= 0 || bounds.Height <= 0) throw new FormatException("SVG 尺寸无效");
-            int w = Math.Clamp((int)Math.Ceiling(settings.WidthMillimeters / settings.LineSpacing), 1, 1500);
-            int h = Math.Max(1, (int)Math.Round(w * bounds.Height / bounds.Width));
-            if ((long)w * h > 1_000_000) throw new FormatException("降低分辨率或缩小素材");
-            using var bitmap = new SKBitmap(w, h);
-            using var canvas = new SKCanvas(bitmap); canvas.Clear(SKColors.White);
-            canvas.Scale(w / bounds.Width, h / bounds.Height); canvas.Translate(-bounds.Left, -bounds.Top); canvas.DrawPicture(picture);
-            return Raster(bitmap, settings, limits, token);
+            var physical = ImageSizing.FitPhysical(bounds.Width, bounds.Height, settings.WidthMillimeters, options, limits);
+            var sample = Sample(bounds.Width, bounds.Height, physical.Width, physical.Height, settings, options, contours is not null);
+            using var bitmap = new SKBitmap(sample.Width, sample.Height); using var canvas = new SKCanvas(bitmap); canvas.Clear(SKColors.White);
+            canvas.Scale(sample.Width / bounds.Width, sample.Height / bounds.Height); canvas.Translate(-bounds.Left, -bounds.Top); canvas.DrawPicture(picture);
+            return Generate(bitmap, physical.Width, physical.Height, settings, limits, contours, token);
         }
         using var data = SKData.CreateCopy(bytes); using var codec = SKCodec.Create(data) ?? throw new FormatException("图片格式不支持");
-        if ((long)codec.Info.Width * codec.Info.Height > 12_000_000) throw new FormatException("原图超过 1200 万像素，请先缩小原图");
         edits ??= new ImageEdits();
-        if (new[] { edits.Left, edits.Top, edits.Right, edits.Bottom }.Any(v => !double.IsFinite(v) || v < 0 || v > 1) || edits.Right <= edits.Left || edits.Bottom <= edits.Top || edits.QuarterTurns is < 0 or > 3)
-            throw new ArgumentException("裁剪范围需为 0–1 且右下角大于左上角");
-        bool exifSwap = codec.EncodedOrigin is SKEncodedOrigin.LeftTop or SKEncodedOrigin.RightTop or SKEncodedOrigin.RightBottom or SKEncodedOrigin.LeftBottom;
-        double imageWidth = exifSwap ? codec.Info.Height : codec.Info.Width, imageHeight = exifSwap ? codec.Info.Width : codec.Info.Height;
+        if (new[] { edits.Left, edits.Top, edits.Right, edits.Bottom }.Any(v => !double.IsFinite(v) || v < 0 || v > 1) || edits.Right <= edits.Left || edits.Bottom <= edits.Top || edits.QuarterTurns is < 0 or > 3) throw new ArgumentException("裁剪范围需为 0–1 且右下角大于左上角");
+        bool swap = codec.EncodedOrigin is SKEncodedOrigin.LeftTop or SKEncodedOrigin.RightTop or SKEncodedOrigin.RightBottom or SKEncodedOrigin.LeftBottom;
+        double imageWidth = swap ? codec.Info.Height : codec.Info.Width, imageHeight = swap ? codec.Info.Width : codec.Info.Height;
         double cropWidth = imageWidth * (edits.Right - edits.Left), cropHeight = imageHeight * (edits.Bottom - edits.Top);
-        if (edits.QuarterTurns % 2 == 1) (cropWidth, cropHeight) = (cropHeight, cropWidth);
-        int width = Math.Clamp((int)Math.Ceiling(settings.WidthMillimeters / settings.LineSpacing), 1, 1500);
-        int height = Math.Max(1, (int)Math.Round(width * cropHeight / cropWidth));
-        if ((long)width * height > 1_000_000) throw new FormatException("采样超过 100 万像素");
-        using var decoded = SKBitmap.Decode(bytes) ?? throw new FormatException("图片解码失败");
-        using var oriented = ApplyExif(decoded, codec.EncodedOrigin);
-        var image = oriented ?? decoded;
-        using var resized = new SKBitmap(width, height); using var c = new SKCanvas(resized);
-        c.Clear(SKColors.White); using var paint = new SKPaint { IsAntialias = true };
-        var crop = new SKRect((float)(edits.Left * image.Width), (float)(edits.Top * image.Height), (float)(edits.Right * image.Width), (float)(edits.Bottom * image.Height));
-        c.Translate(width / 2f, height / 2f); c.RotateDegrees(edits.QuarterTurns * 90);
-        float dw = edits.QuarterTurns % 2 == 0 ? width : height, dh = edits.QuarterTurns % 2 == 0 ? height : width;
-        c.DrawBitmap(image, crop, new SKRect(-dw / 2, -dh / 2, dw / 2, dh / 2), paint);
-        return Raster(resized, settings, limits, token);
-    }
-    private static SKBitmap? ApplyExif(SKBitmap source, SKEncodedOrigin origin)
-    {
-        if (origin == SKEncodedOrigin.TopLeft) return null;
-        bool swap = origin is SKEncodedOrigin.LeftTop or SKEncodedOrigin.RightTop or SKEncodedOrigin.RightBottom or SKEncodedOrigin.LeftBottom;
-        var result = new SKBitmap(swap ? source.Height : source.Width, swap ? source.Width : source.Height);
-        using var canvas = new SKCanvas(result);
-        float w = source.Width, h = source.Height;
-        var matrix = origin switch
+        double aspectWidth = cropWidth, aspectHeight = cropHeight;
+        if (edits.QuarterTurns % 2 == 1) (aspectWidth, aspectHeight) = (aspectHeight, aspectWidth);
+        var fitted = ImageSizing.FitPhysical(aspectWidth, aspectHeight, settings.WidthMillimeters, options, limits);
+        var pixels = Sample(aspectWidth, aspectHeight, fitted.Width, fitted.Height, settings, options, contours is not null);
+        double decodeScale = Math.Min(1, Math.Max(pixels.Width / aspectWidth, pixels.Height / aspectHeight));
+        using var resized = new SKBitmap(pixels.Width, pixels.Height);
+        using (var decoded = ImageSizing.Decode(codec, Math.Max(1, (int)Math.Ceiling(codec.Info.Width * decodeScale)), Math.Max(1, (int)Math.Ceiling(codec.Info.Height * decodeScale))))
+        using (var c = new SKCanvas(resized))
         {
-            SKEncodedOrigin.TopRight => new SKMatrix(-1, 0, w, 0, 1, 0, 0, 0, 1),
-            SKEncodedOrigin.BottomRight => new SKMatrix(-1, 0, w, 0, -1, h, 0, 0, 1),
-            SKEncodedOrigin.BottomLeft => new SKMatrix(1, 0, 0, 0, -1, h, 0, 0, 1),
-            SKEncodedOrigin.LeftTop => new SKMatrix(0, 1, 0, 1, 0, 0, 0, 0, 1),
-            SKEncodedOrigin.RightTop => new SKMatrix(0, -1, h, 1, 0, 0, 0, 0, 1),
-            SKEncodedOrigin.RightBottom => new SKMatrix(0, -1, h, -1, 0, w, 0, 0, 1),
-            SKEncodedOrigin.LeftBottom => new SKMatrix(0, 1, 0, -1, 0, w, 0, 0, 1),
-            _ => SKMatrix.Identity
-        };
-        canvas.SetMatrix(matrix); canvas.DrawBitmap(source, 0, 0); return result;
+            c.Clear(SKColors.White);
+            double orientedWidth = swap ? decoded.Height : decoded.Width, orientedHeight = swap ? decoded.Width : decoded.Height;
+            var crop = new SKRect((float)(edits.Left * orientedWidth), (float)(edits.Top * orientedHeight), (float)(edits.Right * orientedWidth), (float)(edits.Bottom * orientedHeight));
+            float dw = edits.QuarterTurns % 2 == 0 ? pixels.Width : pixels.Height, dh = edits.QuarterTurns % 2 == 0 ? pixels.Height : pixels.Width;
+            c.Translate(pixels.Width / 2f, pixels.Height / 2f); c.RotateDegrees(edits.QuarterTurns * 90);
+            c.Scale(dw / crop.Width, dh / crop.Height); c.Translate(-crop.MidX, -crop.MidY);
+            var matrix = ExifMatrix(decoded.Width, decoded.Height, codec.EncodedOrigin); c.Concat(matrix);
+            using var image = SKImage.FromBitmap(decoded); using var paint = new SKPaint { IsAntialias = true };
+            c.DrawImage(image, 0, 0, new SKSamplingOptions(SKFilterMode.Linear), paint);
+        }
+        token.ThrowIfCancellationRequested();
+        return Generate(resized, fitted.Width, fitted.Height, settings, limits, contours, token);
     }
-    private static ProgramAnalysis Raster(SKBitmap bitmap, RasterSettings settings, JobLimits limits, CancellationToken token)
+    private static (int Width, int Height) Sample(double sourceWidth, double sourceHeight, double physicalWidth, double physicalHeight, RasterSettings settings, ImageProcessingOptions options, bool contour)
+    {
+        return contour
+            ? ImageSizing.FitPixels(sourceWidth, sourceHeight, options.MaxWidthPixels, options.MaxHeightPixels)
+            : ImageSizing.FitPixels(Math.Max(1, Math.Ceiling(physicalWidth / settings.LineSpacing)), Math.Max(1, Math.Ceiling(physicalHeight / settings.LineSpacing)), options.MaxWidthPixels, options.MaxHeightPixels);
+    }
+    private static SKMatrix ExifMatrix(float w, float h, SKEncodedOrigin origin) => origin switch
+    {
+        SKEncodedOrigin.TopRight => new SKMatrix(-1, 0, w, 0, 1, 0, 0, 0, 1),
+        SKEncodedOrigin.BottomRight => new SKMatrix(-1, 0, w, 0, -1, h, 0, 0, 1),
+        SKEncodedOrigin.BottomLeft => new SKMatrix(1, 0, 0, 0, -1, h, 0, 0, 1),
+        SKEncodedOrigin.LeftTop => new SKMatrix(0, 1, 0, 1, 0, 0, 0, 0, 1),
+        SKEncodedOrigin.RightTop => new SKMatrix(0, -1, h, 1, 0, 0, 0, 0, 1),
+        SKEncodedOrigin.RightBottom => new SKMatrix(0, -1, h, -1, 0, w, 0, 0, 1),
+        SKEncodedOrigin.LeftBottom => new SKMatrix(0, 1, 0, -1, 0, w, 0, 0, 1),
+        _ => SKMatrix.Identity
+    };
+    private static Conversion Generate(SKBitmap bitmap, double physicalWidth, double physicalHeight, RasterSettings settings, JobLimits limits, ContourSettings? contours, CancellationToken token)
     {
         byte[] luminance = new byte[checked(bitmap.Width * bitmap.Height)];
         for (int y = 0; y < bitmap.Height; y++)
@@ -85,12 +93,14 @@ public static class ArtworkImporter
             token.ThrowIfCancellationRequested();
             for (int x = 0; x < bitmap.Width; x++)
             {
-                var p = bitmap.GetPixel(x, bitmap.Height - y - 1);
-                double light = (p.Red * 0.2126 + p.Green * 0.7152 + p.Blue * 0.0722);
+                var p = bitmap.GetPixel(x, bitmap.Height - y - 1); double light = p.Red * .2126 + p.Green * .7152 + p.Blue * .0722;
                 luminance[y * bitmap.Width + x] = (byte)Math.Round((light * p.Alpha + 255 * (255 - p.Alpha)) / 255);
             }
         }
-        return RasterCam.Generate(luminance, bitmap.Width, bitmap.Height, settings, limits, token);
+        var effective = settings with { WidthMillimeters = physicalWidth, HeightMillimeters = physicalHeight };
+        var analysis = contours is null ? RasterCam.Generate(luminance, bitmap.Width, bitmap.Height, effective, limits, token)
+            : ExperimentalContours.Generate(luminance, bitmap.Width, bitmap.Height, physicalWidth, physicalHeight, effective, contours, limits, token);
+        return new(analysis, new(bitmap.Width, bitmap.Height, physicalWidth, physicalHeight));
     }
     public static XDocument ValidateSvg(byte[] bytes)
     {
@@ -109,7 +119,7 @@ public static class ArtworkImporter
         }
         return document;
     }
-    private static ProgramAnalysis Outline(XDocument xml, RasterSettings settings, JobLimits limits, CancellationToken token)
+    private static ProgramAnalysis Outline(XDocument xml, RasterSettings settings, JobLimits limits, CancellationToken token, ImageProcessingOptions options)
     {
         var paths = new List<SKPath>();
         try
@@ -136,7 +146,8 @@ public static class ArtworkImporter
             }
             if (paths.Count == 0) throw new FormatException("SVG 没有路径");
             float minX = paths.Min(p => p.Bounds.Left), minY = paths.Min(p => p.Bounds.Top), maxX = paths.Max(p => p.Bounds.Right), maxY = paths.Max(p => p.Bounds.Bottom);
-            double scale = settings.WidthMillimeters / (maxX - minX);
+            var physical = ImageSizing.FitPhysical(maxX - minX, maxY - minY, settings.WidthMillimeters, options, limits);
+            double scale = physical.Width / (maxX - minX);
             if (!double.IsFinite(scale) || scale <= 0) throw new FormatException("SVG 宽度无效");
             var code = new StringBuilder("G21\nG90\nM5\n"); int total = 0;
             foreach (var path in paths)
