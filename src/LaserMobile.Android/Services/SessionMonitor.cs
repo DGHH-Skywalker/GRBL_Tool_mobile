@@ -30,7 +30,7 @@ internal sealed class SessionMonitor : IDisposable
                     ((NotificationManager)service.GetSystemService(Context.NotificationService)!).Notify(notificationId, notification);
                 }
             }
-            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            catch (System.OperationCanceledException) when (stop.IsCancellationRequested) { }
             finally { if (wake.IsHeld) wake.Release(); }
         });
     }

@@ -69,7 +69,8 @@ public sealed class ProtocolTests
     public void DeviceFaultStopsNewLines(string text)
     {
         var sender = Sender(); sender.Start(Now, true); sender.DrainWrites(); sender.Receive(ResponseParser.Parse(text), Now);
-        Assert.Equal(ExecutionState.Interrupted, sender.State); Assert.Equal(["!"], sender.DrainWrites());
+        Assert.Equal(ExecutionState.Interrupted, sender.State);
+        Assert.Equal(text.StartsWith("Grbl", StringComparison.Ordinal) ? Array.Empty<string>() : ["!"], sender.DrainWrites());
     }
     [Fact]
     public void PauseRequiresControllerHold()

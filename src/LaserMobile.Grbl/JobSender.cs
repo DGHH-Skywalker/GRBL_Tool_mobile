@@ -78,7 +78,7 @@ public sealed class JobSender
         {
             case Welcome:
                 if (State == ExecutionState.Cancelling) { State = ExecutionState.Cancelled; output.Clear(); }
-                else Interrupt("Controller reset detected.");
+                else Interrupt("Controller reset detected.", hold: false);
                 break;
             case Alarm a: Interrupt($"ALARM:{a.Code}"); break;
             case CommandError e: Interrupt($"error:{e.Code}"); break;
@@ -138,9 +138,9 @@ public sealed class JobSender
             deadline = now + acknowledgementTimeout;
         }
     }
-    private void Interrupt(string reason)
+    private void Interrupt(string reason, bool hold = true)
     {
         if (IsTerminal) return;
-        error = reason; State = ExecutionState.Interrupted; output.Clear(); output.Enqueue("!");
+        error = reason; State = ExecutionState.Interrupted; output.Clear(); if (hold) output.Enqueue("!");
     }
 }

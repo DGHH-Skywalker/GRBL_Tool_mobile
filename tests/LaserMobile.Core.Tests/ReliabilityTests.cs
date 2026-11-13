@@ -79,6 +79,37 @@ public sealed class ReliabilityTests
             await session.ReadConfiguration(); await Task.Delay(450); await session.Arm(true); Assert.True(session.Snapshot.IsArmed);
         });
     }
+    [Fact] public async Task SessionRejectsRelativeOvershootAndChangedConfirmationPosition()
+    {
+        await WithDemo(async (session, transport, store, library) =>
+        {
+            await Ready(session);
+            for (int i = 1; i <= 3; i++)
+            {
+                await session.Jog(1, 0, 10, 300); var expected = i * 10;
+                await Wait(() => session.Snapshot.WorkX == expected && session.Snapshot.Machine == "Idle");
+            }
+            await session.Arm(true);
+            var job = library.Commit("Relative", GcodeProgram.Prepare("G21 G91\nM5\nG1 X20 F300\nM5", Limits).Plan);
+            await Assert.ThrowsAsync<FormatException>(() => session.Start(job, Limits, Guid.NewGuid(), session.Snapshot.ControllerEpoch, true));
+            Assert.Null(session.Snapshot.Execution);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => session.Start(job, Limits, Guid.NewGuid(), session.Snapshot.ControllerEpoch, true, new(0, 0)));
+            Assert.Empty(store.History());
+        });
+    }
+    [Fact] public async Task AlarmRequiresResetReadAndManualArm()
+    {
+        await WithDemo(async (session, transport, store, library) =>
+        {
+            await Ready(session); var job = library.Commit("Alarm", GcodeProgram.Prepare(DemoTransport.Sample, Limits).Plan);
+            await session.Start(job, Limits, Guid.NewGuid(), session.Snapshot.ControllerEpoch, true);
+            transport.InjectAlarm(); await Wait(() => session.Snapshot.Execution?.State == ExecutionState.Interrupted);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => session.ReadConfiguration());
+            await session.ResetController(true); await Wait(() => session.Snapshot.Machine == "Idle");
+            await session.ReadConfiguration(); await Task.Delay(450); await session.Arm(true);
+            Assert.True(session.Snapshot.IsArmed); Assert.Equal(ExecutionState.Interrupted, store.History()[0].State);
+        });
+    }
     [Fact] public async Task DisconnectPersistsInterruption()
     {
         await WithDemo(async (session, transport, store, library) =>
