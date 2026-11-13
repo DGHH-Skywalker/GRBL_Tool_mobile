@@ -18,7 +18,7 @@ public sealed class SessionWorkflowTests
             await using(var session=new DeviceSession(transport,store))
             {
                 session.Run();await Wait(()=>session.Snapshot.Machine=="Idle");await session.ReadConfiguration();
-                await Wait(()=>transport.Writes.Contains("$G\n"));await Task.Delay(50);
+                await Wait(()=>transport.Writes.Contains("$G\n"));await Task.Delay(300); await session.Arm(true);
                 var job=new JobLibrary(Path.Combine(root,"jobs")).Commit("job",GcodeProgram.Prepare(SimulationSession.Sample,new(40,40,1200,1000)).Plan);
                 var command=Guid.NewGuid();var epoch=session.Snapshot.ControllerEpoch;
                 await Assert.ThrowsAsync<InvalidOperationException>(()=>session.Start(job,new(40,40,1200,1000),command,epoch,false));

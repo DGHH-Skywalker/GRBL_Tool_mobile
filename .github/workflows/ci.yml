@@ -44,8 +44,67 @@ jobs:
       - run: dotnet workload restore GRBL.Tool.Mobile.slnx
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
       - run: dotnet restore GRBL.Tool.Mobile.slnx --locked-mode
-      - run: dotnet build src/LaserMobile.Android -c Release --no-restore -p:AndroidSdkDirectory=$ANDROID_HOME -p:JavaSdkDirectory=$JAVA_HOME
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/grbl-demo-signing
+          key: grbl-demo-signing-v1
+      - name: Prepare demo signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          signing_dir="$HOME/.cache/grbl-demo-signing"
+          mkdir -p "$signing_dir"
+          if [ ! -f "$signing_dir/demo.keystore" ]; then
+            openssl rand -hex 24 > "$signing_dir/password"
+            export GRBL_DEMO_SIGNING_PASSWORD="$(cat "$signing_dir/password")"
+            keytool -genkeypair -keystore "$signing_dir/demo.keystore" -alias grbl-demo -keyalg RSA -keysize 3072 -validity 3650 -dname "CN=GRBL Tool Mobile Demo" -storepass:env GRBL_DEMO_SIGNING_PASSWORD -keypass:env GRBL_DEMO_SIGNING_PASSWORD
+          fi
+          signing_password="$(cat "$signing_dir/password")"
+          echo "::add-mask::$signing_password"
+          echo "GRBL_DEMO_SIGNING_PASSWORD=$signing_password" >> "$GITHUB_ENV"
+      - name: Build signed Release APK
+        run: dotnet build src/LaserMobile.Android -c Release --no-restore -p:AndroidSdkDirectory="$ANDROID_HOME" -p:JavaSdkDirectory="$JAVA_HOME" -p:AndroidKeyStore=true -p:AndroidSigningKeyStore="$HOME/.cache/grbl-demo-signing/demo.keystore" -p:AndroidSigningKeyAlias=grbl-demo -p:AndroidSigningStorePass=env:GRBL_DEMO_SIGNING_PASSWORD -p:AndroidSigningKeyPass=env:GRBL_DEMO_SIGNING_PASSWORD
+      - name: Verify APK and write checksums
+        shell: bash
+        run: |
+          mkdir -p artifacts/apk
+          find src/LaserMobile.Android/bin/Release -name '*-Signed.apk' -exec cp {} artifacts/apk/ \;
+          test -n "$(find artifacts/apk -name '*.apk' -print -quit)"
+          for apk in artifacts/apk/*.apk; do "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"; done
+          cd artifacts/apk
+          sha256sum *.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: src/LaserMobile.Android/bin/Release/**/*.apk
+          path: artifacts/apk
+          retention-days: 30
+  demo-smoke:
+    needs: [core, android]
+    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: artifacts/apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: python3 tools/android-smoke/smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: demo-smoke-evidence
+          path: artifacts/demo-smoke
+          retention-days: 30

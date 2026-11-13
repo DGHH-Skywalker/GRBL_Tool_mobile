@@ -10,17 +10,19 @@ public static partial class GcodeProgram
 {
     [GeneratedRegex(@"([A-Z])([+-]?(?:\d+(?:\.\d*)?|\.\d+))")]
     private static partial Regex Word();
-    public static ProgramAnalysis Prepare(string content, JobLimits limits)
+    public static ProgramAnalysis Prepare(string content, JobLimits limits, WorkPosition? origin = null)
     {
         limits.Validate();
         if (content.Length is 0 or > 4_000_000) throw new FormatException("文件为空或超过 4 MB");
         if (content.Any(c => c > 127 || (char.IsControl(c) && c is not '\n' and not '\r' and not '\t') || c is '!' or '~' or '?' or '$'))
             throw new FormatException("加工文件含实时/配置字符或非 ASCII 字符");
         var lines = new List<string>(); var segments = new List<ToolSegment>();
-        double x = 0, y = 0, scale = 1, feed = 0, power = 0, seconds = 0;
-        double minX = 0, minY = 0, maxX = 0, maxY = 0;
+        double x = origin?.X ?? 0, y = origin?.Y ?? 0, scale = 1, feed = 0, power = 0, seconds = 0;
+        if (!double.IsFinite(x) || !double.IsFinite(y) || x < 0 || y < 0 || x > limits.Width || y > limits.Height)
+            throw new FormatException("起始工作坐标超出工作区域");
+        double minX = x, minY = y, maxX = x, maxY = y;
         bool absolute = true, unitsKnown = false, distanceKnown = false, enabled = false, emits = false;
-        int motion = 0; bool laserInitialized = false;
+        int motion = 0; bool laserInitialized = false, motionKnown = false;
         foreach (var raw in content.Replace("\r", "").Split('\n'))
         {
             var clean = new StringBuilder(); bool comment = false;
@@ -61,7 +63,7 @@ public static partial class GcodeProgram
                     if (key is not ('X' or 'Y' or 'F' or 'S') || !words.TryAdd(key, value)) throw new FormatException("不支持或重复的参数");
                 }
             }
-            if (moveThisLine is not null) motion = moveThisLine.Value;
+            if (moveThisLine is not null) { motion = moveThisLine.Value; motionKnown = true; }
             if (words.TryGetValue('F', out var f)) { feed = f * scale; if (feed <= 0 || feed > limits.MaxFeed) throw new FormatException("进给超限"); }
             if (words.TryGetValue('S', out var s)) { power = s; if (s < 0 || s > limits.MaxPower) throw new FormatException("功率超限"); }
             if (enableThisLine is not null)
@@ -74,6 +76,7 @@ public static partial class GcodeProgram
             if (words.ContainsKey('X') || words.ContainsKey('Y'))
             {
                 if (!laserInitialized) throw new FormatException("移动前必须先 M5 初始化");
+                if (!motionKnown) throw new FormatException("首次移动必须声明 G0/G1");
                 if (!unitsKnown || !distanceKnown) throw new FormatException("移动前必须声明 G20/G21 与 G90/G91");
                 double nx = words.TryGetValue('X', out var vx) ? (absolute ? 0 : x) + vx * scale : x;
                 double ny = words.TryGetValue('Y', out var vy) ? (absolute ? 0 : y) + vy * scale : y;

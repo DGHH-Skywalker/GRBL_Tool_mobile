@@ -16,7 +16,7 @@ public sealed class DeviceExecutionService : Service
 {
     private readonly SemaphoreSlim lifecycle = new(1, 1);
     private DeviceSession? session;
-    private PowerManager.WakeLock? wake;
+    private SessionMonitor? monitor;
     private ExecutionStore store = null!;
     private bool destroyed;
     private static DeviceExecutionService? instance;
@@ -28,17 +28,14 @@ public sealed class DeviceExecutionService : Service
     {
         base.OnCreate(); store = new ExecutionStore(Path.Combine(FilesDir!.AbsolutePath, "executions.sqlite")); store.RecoverInterrupted();
         Volatile.Write(ref instance, this);
+        monitor = new SessionMonitor(this, () => Session, "device", 2, false);
     }
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
     {
         var manager = (NotificationManager)GetSystemService(NotificationService)!;
         manager.CreateNotificationChannel(new NotificationChannel("device", "设备连接与加工", NotificationImportance.Low));
-        using var open = new Intent(this, typeof(MainActivity));
-        using var pending = PendingIntent.GetActivity(this, 0, open, PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
-        var notification = new Notification.Builder(this, "device").SetContentTitle("GRBL 设备会话")
-            .SetContentText("点击查看连接、任务和加工状态").SetContentIntent(pending)
-            .SetSmallIcon(Android.Resource.Drawable.IcDialogInfo).SetOngoing(true).Build();
-        StartForeground(2, notification);
+        StartForeground(2, SessionMonitor.Create(this, "device", false, Session?.Snapshot));
+        if (intent?.Action == "pause") { _ = Pause(intent.GetStringExtra("execution")); return StartCommandResult.NotSticky; }
         if (intent is not null) _ = Connect(intent.GetIntExtra("device", -1), intent.GetIntExtra("port", 0), intent.GetIntExtra("baud", 115200));
         return StartCommandResult.NotSticky;
     }
@@ -49,6 +46,7 @@ public sealed class DeviceExecutionService : Service
         try
         {
             if (destroyed) return;
+            if (SimulationService.Current?.Session is not null) throw new InvalidOperationException("请先退出演示模式");
             if (session?.Snapshot.Execution?.State is ExecutionState.Running or ExecutionState.Pausing or ExecutionState.Paused or ExecutionState.Draining or ExecutionState.Cancelling)
                 throw new InvalidOperationException("请先结束当前任务再重新连接");
             if (session is not null) { await session.DisposeAsync(); session = null; }
@@ -58,27 +56,27 @@ public sealed class DeviceExecutionService : Service
             if (portIndex < 0 || portIndex >= driver.Ports.Count) throw new IOException("串口索引无效");
             var transport = new UsbTransport(manager, driver.Ports[portIndex], baud);
             session = new DeviceSession(transport, store); session.Run(); ConnectionError = null;
-            wake?.Release(); wake?.Dispose();
-            wake = ((PowerManager)GetSystemService(PowerService)!).NewWakeLock(WakeLockFlags.Partial, "GRBL:DeviceSession");
-            wake!.Acquire();
+
         }
         catch (Exception e) { ConnectionError = e.Message; }
         finally { lifecycle.Release(); }
     }
+    private async Task Pause(string? id)
+    { try { if (Guid.TryParse(id, out var execution) && Session is { } s) await s.Pause(execution); } catch (Exception e) { ConnectionError = e.Message; } }
     public async Task Disconnect()
     {
         await lifecycle.WaitAsync();
         try
         {
             if (session is not null) { await session.DisposeAsync(); session = null; }
-            if (wake?.IsHeld == true) wake.Release(); wake?.Dispose(); wake = null;
+
             StopSelf();
         }
         finally { lifecycle.Release(); }
     }
     public override void OnDestroy()
     {
-        destroyed = true; Volatile.Write(ref instance, null);
+        destroyed = true; Volatile.Write(ref instance, null); monitor?.Dispose();
         _ = Disconnect(); base.OnDestroy();
     }
 }

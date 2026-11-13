@@ -26,7 +26,11 @@ public sealed class DeviceSession : IAsyncDisposable
     private double? maxPower;
     private double[]? mpos, wco, wpos;
     private bool laserMode, disposed, running, homing, standardFrame;
-    private long epoch, sequence;
+    private long epoch, sequence, controlRevision;
+    private bool armed, configurationComplete, configurationRequested, needsReset;
+    private int? receiveBufferBytes;
+    private DateTimeOffset configurationCompletedAt, lastProgressSave;
+    private ExecutionState? savedState;
     private string? savedExecution;
     private SessionSnapshot snapshot;
     private DateTimeOffset Now => DateTimeOffset.UnixEpoch + Stopwatch.GetElapsedTime(started);
@@ -57,11 +61,17 @@ public sealed class DeviceSession : IAsyncDisposable
                         AddLog("< " + response);
                         if (response is Welcome welcome)
                         {
+                            InvalidateConfiguration(); needsReset = false; machine = "Unknown"; lastStatus = DateTimeOffset.MinValue;
                             epoch++; firmware = welcome.Text; pending = null; management.Clear(); maxPower = null; laserMode = false; homing = false; standardFrame = false; mpos = wco = wpos = null;
                             if (sender is { IsTerminal: false }) sender.Receive(response, Now);
                         }
                         if (response is Message message)
                         {
+                            if (message.Text.StartsWith("[OPT:", StringComparison.Ordinal))
+                            {
+                                var parts = message.Text.TrimEnd(']').Split(',');
+                                if (parts.Length == 3 && int.TryParse(parts[2], out var capacity) && capacity is >= 80 and <= 4096) receiveBufferBytes = capacity;
+                            }
                             if (message.Text.StartsWith("[VER:1.1", StringComparison.Ordinal)) firmware = "Grbl 1.1 " + message.Text;
                             if (message.Text.StartsWith("$30=", StringComparison.Ordinal) && double.TryParse(message.Text.AsSpan(4), CultureInfo.InvariantCulture, out var p)) maxPower = double.IsFinite(p) && p > 0 ? p : null;
                             if (message.Text.StartsWith("$32=", StringComparison.Ordinal)) laserMode = message.Text[4..] == "1";
@@ -75,6 +85,7 @@ public sealed class DeviceSession : IAsyncDisposable
                         if (response is Status status)
                         {
                             machine = status.State; lastStatus = Now;
+                            if (machine.StartsWith("Alarm", StringComparison.Ordinal) || machine.StartsWith("Door", StringComparison.Ordinal)) InvalidateConfiguration();
                             double[]? Coordinates(string key)
                             {
                                 if (!status.Fields.TryGetValue(key, out var text)) return null;
@@ -88,11 +99,16 @@ public sealed class DeviceSession : IAsyncDisposable
                         }
                         if (pending is not null && response is Acknowledgement or CommandError)
                         {
-                            if (response is CommandError ce) { error = $"设备命令错误 {ce.Code}"; management.Clear(); }
+                            if (response is CommandError ce) { error = $"设备命令错误 {ce.Code}"; management.Clear(); InvalidateConfiguration(); }
+                            else if (pending == "$G" && management.Count == 0)
+                            {
+                                configurationComplete = configurationRequested && firmware.StartsWith("Grbl 1.1", StringComparison.Ordinal) && maxPower is not null && standardFrame;
+                                configurationCompletedAt = Now;
+                            }
                             pending = null; await SendManagement();
                         }
                         else if (sender is not null) { sender.Receive(response, Now); await FlushSender(); }
-                        if (response is Alarm) { management.Clear(); pending = null; }
+                        if (response is Alarm alarm) { management.Clear(); pending = null; machine = "Alarm"; error = $"ALARM:{alarm.Code}"; InvalidateConfiguration(); }
                         Publish();
                     }
                 }
@@ -133,15 +149,17 @@ public sealed class DeviceSession : IAsyncDisposable
     private void RequireIdle(bool allowAlarm = false)
     {
         if (connection != "Connected" || (machine != "Idle" && !(allowAlarm && machine == "Alarm")) || Now - lastStatus > TimeSpan.FromSeconds(2)) throw new InvalidOperationException("需要最新的设备 Idle 状态");
-        if (sender is { IsTerminal: false } || pending is not null) throw new InvalidOperationException("设备正在处理任务或命令");
+        if (sender is { IsTerminal: false } || pending is not null || management.Count != 0) throw new InvalidOperationException("设备正在处理任务或命令");
     }
     public Task ReadConfiguration() => UnderGate(async () =>
     {
-        RequireIdle(true); maxPower = null; laserMode = false; standardFrame = false; management.Enqueue("$I"); management.Enqueue("$$"); management.Enqueue("$G"); await SendManagement();
+        RequireIdle(true);
+        if (needsReset) throw new InvalidOperationException("请先人工复位控制器，清除故障队列");
+        InvalidateConfiguration(); configurationRequested = true; maxPower = null; laserMode = false; standardFrame = false; management.Enqueue("$I"); management.Enqueue("$$"); management.Enqueue("$G"); await SendManagement();
     });
     public Task SelectStandardFrame() => UnderGate(async () =>
     {
-        RequireIdle(); standardFrame = false; wpos = wco = null;
+        RequireIdle(); armed = false; controlRevision++; standardFrame = false; wpos = wco = null;
         management.Enqueue("G54 G17 G94"); management.Enqueue("$G"); await SendManagement();
     });
     public Task CancelJog() => UnderGate(async () =>
@@ -154,13 +172,13 @@ public sealed class DeviceSession : IAsyncDisposable
     {
         RequireIdle(true);
         if (!homing || !hardwareConfirmed) throw new InvalidOperationException("回零需 $22=1 和开关/方向确认");
-        wpos = mpos = wco = null; pending = "home"; commandDeadline = Now + TimeSpan.FromMinutes(2); await Write("$H\n");
+        InvalidateConfiguration(); wpos = mpos = wco = null; pending = "home"; commandDeadline = Now + TimeSpan.FromMinutes(2); await Write("$H\n");
     });
     public Task Unlock(bool confirmed) => UnderGate(async () =>
     {
         RequireIdle(true);
         if (!confirmed || machine != "Alarm") throw new InvalidOperationException("仅在处理报警原因后解锁");
-        pending = "unlock"; commandDeadline = Now + TimeSpan.FromSeconds(5); await Write("$X\n");
+        InvalidateConfiguration(); pending = "unlock"; commandDeadline = Now + TimeSpan.FromSeconds(5); await Write("$X\n");
     });
     private async Task SendManagement()
     {
@@ -171,34 +189,70 @@ public sealed class DeviceSession : IAsyncDisposable
     {
         RequireIdle();
         if (!double.IsFinite(step) || step is <= 0 or > 10 || !double.IsFinite(feed) || feed is <= 0 or > 1200 || Math.Abs(x) + Math.Abs(y) != 1) throw new ArgumentException("点动参数超限");
-        pending = "jog"; commandDeadline = Now + TimeSpan.FromSeconds(5);
+        armed = false; controlRevision++; pending = "jog"; commandDeadline = Now + TimeSpan.FromSeconds(5);
         await Write(FormattableString.Invariant($"$J=G91 G21 X{x * step:0.###} Y{y * step:0.###} F{feed:0.###}\n"));
     });
     public Task SetOrigin() => UnderGate(async () =>
     {
-        RequireIdle(); wpos = wco = null; pending = "origin"; commandDeadline = Now + TimeSpan.FromSeconds(5);
+        RequireIdle(); armed = false; controlRevision++; wpos = wco = null; pending = "origin"; commandDeadline = Now + TimeSpan.FromSeconds(5);
         await Write("G10 L20 P1 X0 Y0\n");
     });
-    public Task Start(StoredJob job, JobLimits limits, Guid commandId, long expectedEpoch, bool operatorConfirmed) => UnderGate(async () =>
+    private void InvalidateConfiguration()
+    {
+        armed = false; configurationComplete = false; configurationRequested = false; receiveBufferBytes = null; controlRevision++;
+    }
+    public Task ResetController(bool confirmed) => UnderGate(async () =>
+    {
+        if (!confirmed || connection != "Connected" || sender is { IsTerminal: false }) throw new InvalidOperationException("请先结束活动任务并确认复位");
+        InvalidateConfiguration(); pending = null; management.Clear(); wpos = mpos = wco = null;
+        machine = "Unknown"; lastStatus = DateTimeOffset.MinValue; await Write("\u0018"); Publish();
+    });
+    public Task Arm(bool confirmed) => UnderGate(() =>
+    {
+        RequireIdle();
+        if (!confirmed || !configurationComplete || !standardFrame || wpos is null || lastStatus < configurationCompletedAt)
+            throw new InvalidOperationException("请读取配置，等待最新坐标后确认就绪");
+        armed = true; controlRevision++; error = null; Publish(); return Task.CompletedTask;
+    });
+    public async Task Start(StoredJob job, JobLimits limits, Guid commandId, long expectedEpoch, bool operatorConfirmed, WorkPosition? expectedPosition = null)
     {
         var fingerprint = FormattableString.Invariant($"{job.Id}:{job.Hash}:{limits.Width}:{limits.Height}:{limits.MaxFeed}:{limits.MaxPower}");
-        if (store.IsDuplicateStart(commandId, fingerprint)) return;
-        if (!operatorConfirmed || epoch != expectedEpoch) throw new InvalidOperationException("确认已失效，请重新检查");
-        RequireIdle();
-        if (!firmware.StartsWith("Grbl 1.1", StringComparison.Ordinal) || maxPower is null || maxPower < limits.MaxPower) throw new InvalidOperationException("请读取 GRBL 1.1 配置并匹配 $30 功率范围");
-        if (wpos is null || wpos[0] < -0.001 || wpos[1] < -0.001 || wpos[0] > limits.Width || wpos[1] > limits.Height)
-            throw new InvalidOperationException("需要有效且位于工作区域内的 WPos；请查询状态并设置工件原点");
-        if (!standardFrame) throw new InvalidOperationException("请读取配置并确认 G54/G17/G94 模态");
-        var analysis = GcodeProgram.Prepare(job.Content, limits);
-        if (analysis.Plan.Sha256 != job.Hash) throw new InvalidDataException("任务内容已变化");
-        if (analysis.EmitsLaser && !laserMode) throw new InvalidOperationException("激光加工需要设备 $32=1");
-        // Keep UI policy outside protocol; profile confirmation acknowledges standard 1.1 barrier semantics.
-        var candidate = new JobSender(analysis.Plan, TimeSpan.FromSeconds(Math.Max(30, analysis.EstimatedSeconds + 10)));
-        candidate.Start(Now, true);
-        store.RecordStart(commandId, fingerprint, candidate.Snapshot); // Atomic intent + dedup precede device writes.
-        sender = candidate; error = null;
-        await FlushSender(); Publish();
-    });
+        WorkPosition origin = null!; long revision = 0; int? window = null; bool duplicate = false;
+        await UnderGate(() =>
+        {
+            duplicate = store.IsDuplicateStart(commandId, fingerprint);
+            if (duplicate) return Task.CompletedTask;
+            RequireIdle();
+            if (!operatorConfirmed || epoch != expectedEpoch || !armed) throw new InvalidOperationException("请读取配置并人工确认设备就绪");
+            if (!firmware.StartsWith("Grbl 1.1", StringComparison.Ordinal) || maxPower is null || maxPower < limits.MaxPower) throw new InvalidOperationException("请读取 GRBL 1.1 配置并匹配 $30 功率范围");
+            if (wpos is null) throw new InvalidOperationException("需要有效的 WPos 工作坐标");
+            if (expectedPosition is not null && (Math.Abs(wpos[0] - expectedPosition.X) > .00001 || Math.Abs(wpos[1] - expectedPosition.Y) > .00001))
+                throw new InvalidOperationException("确认期间工作坐标已变化，请重新检查范围");
+            origin = new(wpos[0], wpos[1]); revision = controlRevision; window = receiveBufferBytes;
+            return Task.CompletedTask;
+        });
+        if (duplicate) return;
+        // CPU work and immutable copy happen outside the serial owner gate and Android UI thread.
+        var prepared = await Task.Run(() =>
+        {
+            var analysis = GcodeProgram.Prepare(job.Content, limits, origin);
+            if (analysis.Plan.Sha256 != job.Hash) throw new InvalidDataException("任务内容已变化");
+            var candidate = new JobSender(analysis, TimeSpan.FromSeconds(Math.Max(30, analysis.EstimatedSeconds + 10)), receiveWindowBytes: window);
+            return (analysis, candidate);
+        }, stop.Token);
+        await UnderGate(async () =>
+        {
+            if (store.IsDuplicateStart(commandId, fingerprint)) return;
+            RequireIdle();
+            if (epoch != expectedEpoch || revision != controlRevision || !armed || !standardFrame || wpos is null || Math.Abs(wpos[0] - origin.X) > .00001 || Math.Abs(wpos[1] - origin.Y) > .00001)
+                throw new InvalidOperationException("准备期间设备位置或配置已变化，请重新确认");
+            if (prepared.analysis.EmitsLaser && !laserMode) throw new InvalidOperationException("激光加工需要设备 $32=1");
+            prepared.candidate.Start(Now, true);
+            store.RecordStart(commandId, fingerprint, prepared.candidate.Snapshot, job with { Parameters = job.Parameters + FormattableString.Invariant($" · WPos {origin.X:0.###},{origin.Y:0.###} · 区域 {limits.Width}×{limits.Height} · {firmware}") });
+            sender = prepared.candidate; error = null;
+            await FlushSender(); Publish();
+        });
+    }
     public Task Pause(Guid executionId) => UnderGate(async () => { RequireExecution(executionId); sender!.Pause(); await FlushSender(); Publish(); });
     public Task Resume(Guid executionId, bool confirmed) => UnderGate(async () =>
     {
@@ -208,7 +262,7 @@ public sealed class DeviceSession : IAsyncDisposable
     });
     public Task Cancel(Guid executionId) => UnderGate(async () =>
     {
-        RequireExecution(executionId); sender!.ConfirmedCancel(); cancelDeadline = Now + TimeSpan.FromSeconds(5);
+        RequireExecution(executionId); InvalidateConfiguration(); sender!.ConfirmedCancel(); cancelDeadline = Now + TimeSpan.FromSeconds(5);
         await FlushSender(); Publish();
     });
     private void RequireExecution(Guid executionId)
@@ -225,20 +279,28 @@ public sealed class DeviceSession : IAsyncDisposable
         foreach (var write in sender.DrainWrites()) await Write(write);
         var value = sender.Snapshot;
         var signature = $"{value.ExecutionId}:{value.State}:{value.SentLines}:{value.AcknowledgedLines}:{value.Error}";
-        if (signature != savedExecution) { store.Save(value); savedExecution = signature; }
+        if (value.State != savedState && value.State is ExecutionState.Interrupted or ExecutionState.Cancelled or ExecutionState.Failed)
+        {
+            InvalidateConfiguration();
+            needsReset = value.State == ExecutionState.Interrupted && value.Error != "Controller reset detected.";
+        }
+        if (signature != savedExecution && (value.State != savedState || Now - lastProgressSave >= TimeSpan.FromSeconds(1)))
+        { store.Save(value); savedExecution = signature; lastProgressSave = Now; }
+        savedState = value.State;
     }
     private async Task Write(string text)
     { await transport.WriteAsync(Encoding.ASCII.GetBytes(text), stop.Token); AddLog("> " + text.Replace("\u0018", "[RESET]").Trim()); }
     private void Publish()
     {
-        Volatile.Write(ref snapshot, new(id, epoch, connection, firmware, machine, position, laserMode, maxPower, sender?.Snapshot, error, ++sequence));
+        Volatile.Write(ref snapshot, new(id, epoch, connection, firmware, machine, position, laserMode, maxPower, sender?.Snapshot, error, ++sequence)
+        { IsArmed = armed, WorkX = wpos?[0], WorkY = wpos?[1], ReceiveBufferBytes = receiveBufferBytes });
     }
     private async Task Fail(string reason)
     {
         await gate.WaitAsync();
         try
         {
-            error = reason; connection = "Lost"; sender?.TransportLost(); management.Clear(); pending = null;
+            InvalidateConfiguration(); error = reason; connection = "Lost"; sender?.TransportLost(); management.Clear(); pending = null;
             if (sender is not null)
             {
                 store.Save(sender.Snapshot);

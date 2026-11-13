@@ -4,8 +4,8 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>LaserMobile.AndroidApp</RootNamespace>
     <ApplicationId>io.github.dghhskywalker.grbltoolmobile</ApplicationId>
-    <ApplicationVersion>2</ApplicationVersion>
-    <ApplicationDisplayVersion>0.2.0</ApplicationDisplayVersion>
+    <ApplicationVersion>3</ApplicationVersion>
+    <ApplicationDisplayVersion>0.3.0</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>29</SupportedOSPlatformVersion>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <RunAOTCompilation>false</RunAOTCompilation>

@@ -8,13 +8,13 @@ public sealed class JobLibrary
 {
     private readonly string root;
     public JobLibrary(string root) { this.root = Path.GetFullPath(root); Directory.CreateDirectory(this.root); }
-    public StoredJob Commit(string name, JobPlan plan)
+    public StoredJob Commit(string name, JobPlan plan, JobLimits? limits = null, string? parameters = null)
     {
         var existing = Directory.EnumerateFiles(root, "*.json").Select(p => new FileInfo(p)).ToArray();
         if (existing.Length >= 100 || existing.Sum(p => p.Length) >= 64_000_000) throw new IOException("任务库达到 100 项或 64 MB 上限，请删除旧任务");
         var content = string.Join('\n', plan.Lines) + "\n";
         if (Hash(content) != plan.Sha256) throw new InvalidDataException("任务哈希不匹配");
-        var job = new StoredJob(plan.Id, Path.GetFileName(name), plan.Sha256, content, DateTimeOffset.UtcNow);
+        var job = new StoredJob(plan.Id, Path.GetFileName(name), plan.Sha256, content, DateTimeOffset.UtcNow) { Limits = limits, Parameters = parameters };
         var path = Path.Combine(root, job.Id + ".json"); var temp = path + ".tmp";
         using (var file = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         { JsonSerializer.Serialize(file, job); file.Flush(true); }

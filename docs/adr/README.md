@@ -7,4 +7,6 @@
 - 0005：扩展契约独立。星光 profile 未确认，不通过 USB 桥 VID/PID 推断机型。
 - 0006：依赖优先复用。USB、Skia、SQLite 已接入；Svg.Skia/Clipper2 已接入；Cyotek/LaserGRBL 抽取记录位于第三方 manifest。
 
+- [0007：0.3 执行可靠性与完整演示](0007-v03-execution-and-demo.md)。
+
 这些记录描述当前已实现边界，详细目标见完整方案。
