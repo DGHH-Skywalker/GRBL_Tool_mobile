@@ -8,7 +8,7 @@ permissions:
   actions: read
   contents: write
 concurrency:
-  group: distribute-demo-0.3.0
+  group: distribute-demo-0.4.0
   cancel-in-progress: false
 jobs:
   release:
@@ -17,11 +17,11 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      SOURCE_RUN: '43389716471'
-      SOURCE_SHA: '2029bb38b87b05fa051fca51717aaae074fd81f2'
-      APK_SHA256: 'e80db22c46f7093867752ac2556ac081e0adb17a27f7d79f07a55d6bcae135e9'
-      RELEASE_TAG: 'v0.3.0-demo'
-      APK_NAME: 'GRBL-Tool-Mobile-0.3.0.apk'
+      SOURCE_RUN: '43401528060'
+      SOURCE_SHA: 'c20b0b33ac8369ce4b86acc3c739167f28fde32a'
+      APK_SHA256: '0b7e0b922674bca3ae9d76e1f82986977b6713ad67b745685e2d3e255ec3dfed'
+      RELEASE_TAG: 'v0.4.0-demo'
+      APK_NAME: 'GRBL-Tool-Mobile-0.4.0.apk'
     steps:
       - name: Verify source workflow succeeded at the audited commit
         shell: bash
@@ -56,14 +56,15 @@ jobs:
             exit 0
           fi
           cat > release-notes.md <<'NOTES'
-          已通过 59 项核心测试及 Android API 35 模拟器完整交互验收的 0.3.0 演示版。
+          已通过 74 项核心测试及 Android API 35 模拟器完整交互验收的 0.4.0 演示版。
 
           安装：Android 10 及以上，ARM64 / x86_64。下载 APK 后安装，在设备页点击“体验完整演示”。
 
-          包含 USB 控制、文件导入与预览、暂停/继续、后台完成、任务历史和内置演示。
+          新增底部导航、固定单屏、分步参数、分页记录、软键盘适配及文件格式和内容白名单。
+          保留 USB 控制、文件导入与预览、暂停/继续、后台完成、任务历史和内置演示。
           实体控制板与现场加工验收独立进行。
 
-          原始已验收安装包，保留其签名与 SHA256；源码版本为 2029bb38b87b05fa051fca51717aaae074fd81f2。
+          原始已验收安装包，保留其签名与 SHA256；源码版本为 c20b0b33ac8369ce4b86acc3c739167f28fde32a。
           源码采用 GPL-3.0-or-later；源码和第三方声明包含在本标签对应的仓库中。
           NOTES
-          gh release create "$RELEASE_TAG" "package/$APK_NAME" package/SHA256SUMS.txt --target "$SOURCE_SHA" --prerelease --title 'GRBL Tool Mobile 0.3.0 Demo' --notes-file release-notes.md
+          gh release create "$RELEASE_TAG" "package/$APK_NAME" package/SHA256SUMS.txt --target "$SOURCE_SHA" --prerelease --title 'GRBL Tool Mobile 0.4.0 Demo' --notes-file release-notes.md

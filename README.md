@@ -2,13 +2,15 @@
 
 C# / .NET for Android 原生激光雕刻控制工具。支持 USB OTG 连接 GRBL 1.1，独立前台执行、G-code 工作流、位图与 SVG 转换。
 
-## 0.3 演示版
+## 0.4 单屏移动界面
 
 [APK 镜像直链](https://gh-proxy.com/https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/releases/download/v0.3.0-demo/GRBL-Tool-Mobile-0.3.0.apk) · [下载与校验说明](docs/DOWNLOADS.md) · [59 项测试与 Android 模拟器验收](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43389716471)
 
 从 [GitHub Actions](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions) 成功运行的 Artifacts 下载 `android-apk`，安装 `*-Signed.apk`。Android 10 及以上，打开设备页点击“体验完整演示”。[完整体验与安装说明](docs/DEMO.md)。
 
-本版新增实际工作坐标预检、参数修改失效机制、人工就绪、报告容量的字符流控、历史参数快照、进度落盘节流、分块缓存预览、任务期唤醒锁与通知暂停。完整演示复用 USB 的会话、任务、状态与历史链路。
+本版新增固定底部导航、单屏操作、分步参数、分页历史、输入法适配，以及扩展名、MIME、大小和真实内容的统一导入检查。主流程不使用上下滚动。设计资料与文件白名单见 [移动界面规范](docs/MOBILE_UI.md)。
+
+保留实际工作坐标预检、参数修改失效、人工就绪、字符流控、进度节流、缓存预览、任务期唤醒锁与通知暂停。完整演示复用 USB 会话、任务和历史链路。
 
 ## 功能
 

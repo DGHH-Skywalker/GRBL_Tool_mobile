@@ -61,3 +61,25 @@ e80db22c46f7093867752ac2556ac081e0adb17a27f7d79f07a55d6bcae135e9
 ## 镜像分发验证（2026-11-13）
 
 新增原始已验收 APK 分发工作流，固定源运行、源提交及 SHA256，发布免登录的 APK 文件供镜像转发。分发运行 `43396404186` 成功。主镜像及备用镜像均已完整下载 56,527,391 字节并复核 SHA256。镜像地址见 [DOWNLOADS.md](DOWNLOADS.md)。本次分发保持原始安装包字节及签名。
+
+## 0.4 单屏界面与导入验证（2026-11-13）
+
+功能及模拟器脚本提交：`c20b0b33ac8369ce4b86acc3c739167f28fde32a`。
+
+[完整通过的 Actions 运行](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43401528060)。
+
+- 74 项核心测试通过，包含 Skia 原生解码、伪装后缀、截断图片、MIME 类别、G-code 文本与指令内容、SVG 脚本及配置结构检查。
+- Android Release 构建与签名校验通过。
+- Android API 35 模拟器全部通过：正常尺寸下的固定屏幕、底部导航、暂停继续、后台完成、分页历史；系统文件选择器隐藏无关 PDF、选择伪装 PNG 后拒绝并保留原任务、有效 PNG 导入及生成；参数变化阻止启动；360×640 等效屏幕、1.3 字体、所有主页面与参数分步控件可见；软键盘与输入框、下一步保持可见。
+- 验收脚本未使用寻找应用按钮的滑屏手势，应用主页面没有 ScrollView。
+- 已人工查看正常屏幕加工控制、小屏加工页及键盘表单截图。
+
+[APK 构建产物](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43401528060/artifacts/14025037637)；[界面截图、UI XML、PASS 结果及日志](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43401528060/artifacts/14026235734)。
+
+APK SHA256：
+
+```text
+0b7e0b922674bca3ae9d76e1f82986977b6713ad67b745685e2d3e255ec3dfed
+```
+
+本轮全部构建和测试由 GitHub Actions 执行，本地进行源码修改和产物检查。控制器协议、实体设备验收范围保持原有记录。
