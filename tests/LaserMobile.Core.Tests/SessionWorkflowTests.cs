@@ -33,6 +33,26 @@ public sealed class SessionWorkflowTests
         }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();Directory.Delete(root,true); }
     }
+    [Fact] public async Task ManagementAckRequiresNewIdleBeforeArming()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()); Directory.CreateDirectory(dir);
+        try
+        {
+            var transport = new Controller(); var store = new ExecutionStore(Path.Combine(dir, "runs.sqlite"));
+            await using var session = new DeviceSession(transport, store); session.Run();
+            await Wait(() => session.Snapshot.Machine == "Idle"); await session.ReadConfiguration(); await Task.Delay(450); await session.Arm(true);
+            transport.SuppressStatus = true; await Task.Delay(100);
+            await session.Jog(1, 0, 1, 300);
+            await Wait(() =>
+            {
+                var log = session.Log; int command = Array.FindLastIndex(log, x => x.StartsWith("> $J=", StringComparison.Ordinal));
+                return command >= 0 && log.Skip(command + 1).Any(x => x.StartsWith("< Acknowledgement", StringComparison.Ordinal));
+            });
+            await Assert.ThrowsAsync<InvalidOperationException>(() => session.Arm(true));
+            transport.EmitIdle(); await Task.Delay(50); await session.Arm(true); Assert.True(session.Snapshot.IsArmed);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
+    }
     [Fact] public void PresetParsingIsVersionedAndBounded()
     {
         var p=LaserMobile.Extensions.Abstractions.DevicePreset.Parse("""{"schemaVersion":1,"id":"custom","displayName":"Manual","firmwareFamily":"grbl1.1","width":40,"height":40,"maxFeed":1200,"maxPower":1000}""");
@@ -45,9 +65,12 @@ public sealed class SessionWorkflowTests
     {
         private readonly Channel<byte[]> channel=Channel.CreateUnbounded<byte[]>();
         public System.Collections.Concurrent.ConcurrentBag<string> Writes {get;}=[];
+        public bool SuppressStatus { get; set; }
+        public void EmitIdle() => channel.Writer.TryWrite("<Idle|WPos:0,0,0>\n"u8.ToArray());
         public ValueTask WriteAsync(ReadOnlyMemory<byte> bytes,CancellationToken token)
         {
             var line=Encoding.ASCII.GetString(bytes.Span);Writes.Add(line);
+            if (line == "?" && SuppressStatus) return ValueTask.CompletedTask;
             string response=line switch
             {
                 "?"=>"<Idle|WPos:0,0,0>\n",

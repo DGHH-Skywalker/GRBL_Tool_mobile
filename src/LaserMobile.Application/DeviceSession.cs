@@ -30,6 +30,7 @@ public sealed class DeviceSession : IAsyncDisposable
     private bool armed, configurationComplete, configurationRequested, needsReset;
     private int? receiveBufferBytes;
     private DateTimeOffset configurationCompletedAt, lastProgressSave;
+    private DateTimeOffset lastManagementReply = DateTimeOffset.MinValue;
     private ExecutionState? savedState;
     private string? savedExecution;
     private SessionSnapshot snapshot;
@@ -99,6 +100,7 @@ public sealed class DeviceSession : IAsyncDisposable
                         }
                         if (pending is not null && response is Acknowledgement or CommandError)
                         {
+                            lastManagementReply = Now;
                             if (response is CommandError ce) { error = $"设备命令错误 {ce.Code}"; management.Clear(); InvalidateConfiguration(); }
                             else if (pending == "$G" && management.Count == 0)
                             {
@@ -148,7 +150,7 @@ public sealed class DeviceSession : IAsyncDisposable
     }
     private void RequireIdle(bool allowAlarm = false)
     {
-        if (connection != "Connected" || (machine != "Idle" && !(allowAlarm && machine == "Alarm")) || Now - lastStatus > TimeSpan.FromSeconds(2)) throw new InvalidOperationException("需要最新的设备 Idle 状态");
+        if (connection != "Connected" || (machine != "Idle" && !(allowAlarm && machine == "Alarm")) || Now - lastStatus > TimeSpan.FromSeconds(2) || lastStatus <= lastManagementReply) throw new InvalidOperationException("需要命令应答之后的最新设备 Idle 状态与坐标");
         if (sender is { IsTerminal: false } || pending is not null || management.Count != 0) throw new InvalidOperationException("设备正在处理任务或命令");
     }
     public Task ReadConfiguration() => UnderGate(async () =>

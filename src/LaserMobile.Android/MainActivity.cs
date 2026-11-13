@@ -366,9 +366,10 @@ public sealed class MainActivity : Activity
     {
         if (source is null || converting) return;
         var data = source; var name = sourceName; var limits = Limits(); var revision = draft.Revision;
-        var settings = new RasterSettings(Value(artWidth), Value(spacing), Value(feed), Value(power), Value(gamma), invert.Checked, true, dither.Checked ? RasterMode.FloydSteinberg : threshold.Checked ? RasterMode.Threshold : RasterMode.Grayscale);
+        bool image = IsArtwork(name);
+        var settings = image ? new RasterSettings(Value(artWidth), Value(spacing), Value(feed), Value(power), Value(gamma), invert.Checked, true, dither.Checked ? RasterMode.FloydSteinberg : threshold.Checked ? RasterMode.Threshold : RasterMode.Grayscale) : new RasterSettings(1, .1, 1, 1);
         bool vector = outline.Checked;
-        var edits = new ImageEdits(Value(cropLeft), Value(cropTop), Value(cropRight), Value(cropBottom), quarterTurns);
+        var edits = image ? new ImageEdits(Value(cropLeft), Value(cropTop), Value(cropRight), Value(cropBottom), quarterTurns) : new ImageEdits();
         converting = true; conversion?.Dispose(); conversion = new CancellationTokenSource();
         try
         {
