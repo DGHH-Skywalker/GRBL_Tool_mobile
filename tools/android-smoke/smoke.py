@@ -17,10 +17,21 @@ def adb(*args):
 def tree():
     # Cold-boot accessibility can briefly have no active root even after boot_completed.
     last = ""
-    for _ in range(5):
+    for _ in range(8):
         try:
             last = adb("shell", "uiautomator", "dump", "/sdcard/grbl-window.xml").decode()
-            return ET.fromstring(adb("shell", "cat", "/sdcard/grbl-window.xml"))
+            root = ET.fromstring(adb("shell", "cat", "/sdcard/grbl-window.xml"))
+            # Google API images may show a launcher ANR during cold boot. Never dismiss app ANRs.
+            nodes = list(root.iter("node"))
+            if any(n.get("package") == "android" and n.get("text") == "Pixel Launcher isn't responding" for n in nodes):
+                close = next(n for n in nodes if n.get("resource-id") == "android:id/aerr_close")
+                x1, y1, x2, y2 = map(int, re.findall(r"\d+", close.get("bounds")))
+                adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+                with (OUT / "emulator-events.txt").open("a") as events:
+                    events.write("Dismissed system Pixel Launcher ANR during cold boot\n")
+                time.sleep(1)
+                continue
+            return root
         except (subprocess.CalledProcessError, ET.ParseError) as error:
             last += str(error)
             time.sleep(1)
@@ -77,8 +88,9 @@ try:
     assert apks, "Signed APK missing"
     adb("install", "-r", str(apks[0]))
     adb("shell", "pm", "grant", APP, "android.permission.POST_NOTIFICATIONS")
+    time.sleep(15)  # Let system first-boot package initialization settle.
     launch()
-    wait("体验完整演示")
+    wait("体验完整演示", timeout=60)
     screenshot("01-welcome")
     tap("体验完整演示")
     wait("GRBL-demo.nc")
