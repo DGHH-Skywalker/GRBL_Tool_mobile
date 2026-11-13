@@ -2,7 +2,7 @@
 
 ## 下载与安装
 
-打开 [GitHub Actions](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions)，选择成功的 Build and test 运行，在 Artifacts 下载 `android-apk`，解压后安装 `*-Signed.apk`。系统要求 Android 10（API 29）及以上。`SHA256SUMS.txt` 提供 APK 文件校验值。
+打开 [GitHub Actions](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions)，选择成功的 Build and test 运行，在 Artifacts 下载 `android-apk`，解压后安装 `*-Signed.apk`。系统要求 Android 10（API 29）及以上，ARM64 或 x86_64。`SHA256SUMS.txt` 提供 APK 文件校验值。
 
 本版同时包含 USB 控制与离线演示。全部业务逻辑运行在手机内；演示无需网络、USB 或额外硬件。版本名 0.3.0，应用 ID 为 `io.github.dghhskywalker.grbltoolmobile`。
 
@@ -20,7 +20,7 @@
 
 ## 故障体验
 
-设备页提供“演示：设备报警”“演示：控制器复位”“演示：连接中断”。
+设备页的“设备参数与维护”内提供“演示：设备报警”“演示：控制器复位”“演示：连接中断”。
 
 - 任务中发生报警：执行进入 Interrupted，开始加工禁用。结束故障原因后点击软件复位，等待 Idle，读取配置并确认设备就绪，按新任务重新启动。
 - 控制器复位：控制器世代递增，当前任务进入 Interrupted；读取新配置并人工就绪后创建新执行。
@@ -34,7 +34,7 @@
 1. 退出演示连接，使用 OTG 连接控制板。
 2. 扫描并选择端口，核对波特率后授权连接。
 3. 设置工作区域和速度/功率上限，读取固件与配置。
-4. 根据实际位置点动、设置工件原点，等待最新 WPos；点击“确认设备就绪”。
+4. 展开“设备参数与维护”，根据实际位置点动、设置工件原点，等待最新 WPos；点击“确认设备就绪”。
 5. 导入作品并生成、查看预览，再在加工页确认并启动。
 
 本版以标准 GRBL 1.1 的 XY 方言工作。启动按实时 WPos 重新校验整个路径。G0/G1、G20/G21、G90/G91、G54/G17/G94、M3/M4/M5、X/Y/F/S 已实现；首个移动前声明单位、距离、运动模式及 M5。支持列表之外的指令在导入时给出错误。

@@ -39,6 +39,30 @@ public sealed class MainActivity : Activity
     private Spinner ports = null!;
     private readonly List<(UsbSerialPort Port, string Label)> devices = [];
     private readonly List<LinearLayout> pages = [];
+    private readonly List<Button> navigation = [];
+    private bool Dark => ((int)Resources!.Configuration!.UiMode & 0x30) == 0x20;
+    private int Dp(float value) => (int)(value * Resources!.DisplayMetrics!.Density);
+    private Android.Graphics.Color TextColor => Android.Graphics.Color.ParseColor(Dark ? "#E7EDF7" : "#172842");
+    private Android.Graphics.Drawables.GradientDrawable Surface(string color, int radius = 12)
+    {
+        var drawable = new Android.Graphics.Drawables.GradientDrawable(); drawable.SetColor(Android.Graphics.Color.ParseColor(color)); drawable.SetCornerRadius(Dp(radius)); return drawable;
+    }
+    private void StyleButton(Button button, bool primary)
+    {
+        var background = new Android.Graphics.Drawables.StateListDrawable();
+        background.AddState([-Android.Resource.Attribute.StateEnabled], Surface(Dark ? "#263140" : "#E8EDF4", 8));
+        background.AddState([], Surface(primary ? "#1762CC" : Dark ? "#253449" : "#EAF1FB", 8)); button.Background = background;
+        button.SetTextColor(new Android.Content.Res.ColorStateList([[-Android.Resource.Attribute.StateEnabled], []],
+            [Android.Graphics.Color.ParseColor(Dark ? "#8090A5" : "#8794A7").ToArgb(), Android.Graphics.Color.ParseColor(primary ? "#FFFFFF" : Dark ? "#D9E8FF" : "#234D82").ToArgb()]));
+        button.Elevation = 0; button.SetAllCaps(false); button.SetMinHeight(Dp(46)); button.SetPadding(Dp(10), Dp(6), Dp(10), Dp(6));
+    }
+    private static string StateName(ExecutionState? state) => state switch
+    {
+        ExecutionState.Ready => "已准备", ExecutionState.Running => "加工中", ExecutionState.Pausing => "正在暂停",
+        ExecutionState.Paused => "已暂停", ExecutionState.Draining => "等待设备完成", ExecutionState.Cancelling => "正在取消",
+        ExecutionState.Completed => "已完成", ExecutionState.Cancelled => "已取消", ExecutionState.Interrupted => "执行中断",
+        ExecutionState.Failed => "执行失败", _ => "等待任务"
+    };
     private LinearLayout root = null!;
     private SKCanvasView canvas = null!;
     private JobLibrary library = null!;
@@ -61,14 +85,16 @@ public sealed class MainActivity : Activity
         if (DeviceExecutionService.Current is null && SimulationService.Current is null) executions.RecoverInterrupted();
         root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         var density = Resources!.DisplayMetrics!.Density; root.SetPadding((int)(16 * density), (int)(48 * density), (int)(16 * density), (int)(28 * density)); SetContentView(root);
+        root.SetBackgroundColor(Android.Graphics.Color.ParseColor(Dark ? "#101722" : "#F3F6FB"));
         status = Label(root, "GRBL Tool Mobile · 连接设备或导入作品"); status.SetMinLines(2);
+        status.Background = Surface(Dark ? "#1C2C43" : "#E7F0FF"); status.SetPadding(Dp(12), Dp(10), Dp(12), Dp(10));
         var nav = Row(root);
         string[] titles = ["设备", "作品", "加工", "历史"];
-        for (int i = 0; i < titles.Length; i++) { int index = i; Button(nav, titles[i], () => { ShowPage(index); return Task.CompletedTask; }); }
+        for (int i = 0; i < titles.Length; i++) { int index = i; navigation.Add(Button(nav, titles[i], () => { ShowPage(index); return Task.CompletedTask; })); }
         for (int i = 0; i < 4; i++)
         {
             var scroll = new ScrollView(this); var page = new LinearLayout(this) { Orientation = Orientation.Vertical };
-            page.SetPadding(8, 8, 8, 8); scroll.AddView(page); root.AddView(scroll, new LinearLayout.LayoutParams(-1, 0, 1)); pages.Add(page);
+            page.SetPadding(Dp(12), Dp(12), Dp(12), Dp(12)); page.Background = Surface(Dark ? "#172130" : "#FFFFFF"); scroll.AddView(page); root.AddView(scroll, new LinearLayout.LayoutParams(-1, 0, 1)); pages.Add(page);
         }
         BuildDevice(); BuildArtwork(); BuildJob(); BuildHistory();
         if (Guid.TryParse(preferences.GetString("selectedJob", ""), out var savedId))
@@ -78,7 +104,7 @@ public sealed class MainActivity : Activity
         ShowPage(0);
     }
     private TextView Label(LinearLayout parent, string text)
-    { var v = new TextView(this) { Text = text, TextSize = 15 }; v.SetPadding(0, 8, 0, 8); parent.AddView(v); return v; }
+    { var v = new TextView(this) { Text = text, TextSize = 15 }; v.SetTextColor(TextColor); v.SetPadding(0, Dp(5), 0, Dp(5)); parent.AddView(v); return v; }
     private LinearLayout Row(LinearLayout parent)
     { var row = new LinearLayout(this) { Orientation = Orientation.Horizontal }; parent.AddView(row); return row; }
     private EditText Number(LinearLayout page, string title, string value, string key)
@@ -92,7 +118,9 @@ public sealed class MainActivity : Activity
     private Button Button(LinearLayout parent, string text, Func<Task> action)
     {
         var button = new Button(this) { Text = text, ContentDescription = text, TextSize = parent.Orientation == Orientation.Horizontal ? 12 : 14 };
-        parent.AddView(button, new LinearLayout.LayoutParams(parent.Orientation == Orientation.Horizontal ? 0 : -1, -2, parent.Orientation == Orientation.Horizontal ? 1 : 0));
+        StyleButton(button, text is "体验完整演示" or "开始加工" or "生成并保存任务" or "授权并连接");
+        var layout = new LinearLayout.LayoutParams(parent.Orientation == Orientation.Horizontal ? 0 : -1, -2, parent.Orientation == Orientation.Horizontal ? 1 : 0);
+        layout.SetMargins(Dp(2), Dp(5), Dp(2), Dp(5)); parent.AddView(button, layout);
         button.Click += async (_, _) =>
         {
             button.Enabled = false;
@@ -104,7 +132,7 @@ public sealed class MainActivity : Activity
     }
     private void ShowPage(int index)
     {
-        for (int i = 0; i < pages.Count; i++) ((View)pages[i].Parent!).Visibility = i == index ? ViewStates.Visible : ViewStates.Gone;
+        for (int i = 0; i < pages.Count; i++) { ((View)pages[i].Parent!).Visibility = i == index ? ViewStates.Visible : ViewStates.Gone; StyleButton(navigation[i], i == index); }
         if (index == 3) RefreshHistory();
     }
     private void BuildDevice()
@@ -131,6 +159,9 @@ public sealed class MainActivity : Activity
         Button(p, "确认设备就绪", async () => { if (await Ask("设备就绪", "确认已核对设备配置、工作原点和工作区域？")) await Session().Arm(true); });
         Button(p, "断开连接", async () => { if (await Ask("断开设备", "确认结束设备会话？活动任务将记为中断。")) { if (DeviceExecutionService.Current is { } s) await s.Disconnect(); SimulationService.Current?.Disconnect(); } });
         details = Label(p, "设备尚未连接");
+        var advanced = new LinearLayout(this) { Orientation = Orientation.Vertical, Visibility = ViewStates.Gone };
+        Button(p, "设备参数与维护", () => { advanced.Visibility = advanced.Visibility == ViewStates.Gone ? ViewStates.Visible : ViewStates.Gone; return Task.CompletedTask; });
+        p.AddView(advanced); p = advanced;
         areaWidth = Number(p, "工作区域宽度 mm", "40", "areaWidth");
         areaHeight = Number(p, "工作区域高度 mm", "40", "areaHeight");
         maxFeed = Number(p, "进给上限 mm/min", "1200", "maxFeed");
@@ -209,11 +240,12 @@ public sealed class MainActivity : Activity
         var p = pages[2]; Label(p, "确认项目、工作零点、工作区域、功率及现场条件后启动。");
         jobSummary = Label(p, "请在作品页准备任务");
         jobProgress = new ProgressBar(this, null, Android.Resource.Attribute.ProgressBarStyleHorizontal) { Max = 1000 }; p.AddView(jobProgress);
-        confirmed = Check(p, "已检查现场、坐标、材料、参数与设备为标准 GRBL 1.1；确认使用其同步屏障和复位取消策略");
+        confirmed = Check(p, "已检查现场，并核对工作原点与加工参数");
         startButton = Button(p, "开始加工", async () => { if (!confirmed.Checked) throw new InvalidOperationException("请完成加工确认"); await StartSelected(false); });
         frameButton = Button(p, "无光范围预跑", async () => { if (!confirmed.Checked) throw new InvalidOperationException("请先确认范围与现场"); await StartSelected(true); });
-        pauseButton = Button(p, "暂停", () => { var s = Session(); return s.Pause(s.Snapshot.Execution?.ExecutionId ?? Guid.Empty); });
-        resumeButton = Button(p, "继续", async () =>
+        var controls = Row(p);
+        pauseButton = Button(controls, "暂停", () => { var s = Session(); return s.Pause(s.Snapshot.Execution?.ExecutionId ?? Guid.Empty); });
+        resumeButton = Button(controls, "继续", async () =>
         {
             var s = Session(); var id = s.Snapshot.Execution?.ExecutionId ?? Guid.Empty;
             if (await Ask("继续加工", "确认当前现场状态允许继续输出？")) await s.Resume(id, true);
@@ -305,6 +337,7 @@ public sealed class MainActivity : Activity
         areaWidth.Text = limits.Width.ToString(CultureInfo.InvariantCulture); areaHeight.Text = limits.Height.ToString(CultureInfo.InvariantCulture);
         maxFeed.Text = limits.MaxFeed.ToString(CultureInfo.InvariantCulture); maxPower.Text = limits.MaxPower.ToString(CultureInfo.InvariantCulture);
         source = Encoding.ASCII.GetBytes(job.Content); sourceName = Path.ChangeExtension(job.Name, ".nc"); quarterTurns = 0;
+        if (IsDestroyed) return;
         selected = job; prepared = result; jobName = job.Name; draft.Commit(draft.Revision);
         preview?.Dispose(); preview = new ToolpathPreview(result); artwork.Text = Description(); confirmed.Checked = false; canvas.Invalidate();
     }
@@ -345,6 +378,7 @@ public sealed class MainActivity : Activity
             if (revision != draft.Revision) throw new InvalidOperationException("输入已更新，请重新生成任务");
             string parameters = IsArtwork(name) ? $"宽 {settings.WidthMillimeters:0.##} mm · 行距 {settings.LineSpacing:0.###} mm · F{settings.Feed:0.##} · S{settings.Power:0.##} · Gamma {settings.Gamma:0.##} · {settings.Mode} · 反色 {settings.Invert} · 旋转 {quarterTurns * 90}° · 裁剪 {edits}" : "G-code 指令参数以保存文件为准";
             var job = await Task.Run(() => library.Commit(name, result.Plan, limits, parameters));
+            if (conversion.IsCancellationRequested || IsDestroyed) { library.Delete(job.Id); return; }
             if (!draft.Commit(revision)) { library.Delete(job.Id); throw new InvalidOperationException("输入已更新，请重新生成任务"); }
             prepared = result; selected = job; jobName = name; preview?.Dispose(); preview = new ToolpathPreview(result); confirmed.Checked = false; artwork.Text = Description(); canvas.Invalidate();
         }
@@ -380,7 +414,7 @@ public sealed class MainActivity : Activity
         preview?.Draw(c, viewport, scale);
     }
     private void RefreshHistory()
-    { history.Text = "准备任务\n" + string.Join('\n', library.List().Select(j => $"{j.Name} · {j.CreatedAt.ToLocalTime():MM-dd HH:mm}")) + "\n\n执行记录\n" + string.Join('\n', executions.History().Select(x => $"{x.JobName ?? x.Id.ToString()[..8]} · {x.State}\n{x.AcknowledgedLines}/{x.TotalLines} 行 · {x.StartedAt}\n{x.Parameters} {x.Error}")); }
+    { history.Text = "准备任务\n" + string.Join('\n', library.List().Select(j => $"{j.Name} · {j.CreatedAt.ToLocalTime():MM-dd HH:mm}")) + "\n\n执行记录\n" + string.Join('\n', executions.History().Select(x => $"{x.JobName ?? x.Id.ToString()[..8]} · {StateName(x.State)}\n{x.AcknowledgedLines}/{x.TotalLines} 行 · {x.StartedAt}\n{x.Parameters} {x.Error}")); }
 #pragma warning disable CS0672, CA1422
     protected override async void OnActivityResult(int requestCode, Android.App.Result resultCode, Intent? data)
     {
@@ -444,7 +478,7 @@ public sealed class MainActivity : Activity
         if (!visible) return;
         var snapshot = CurrentSession()?.Snapshot;
         string mode = SimulationService.Current?.Session is not null ? "演示设备" : "USB";
-        SetLabel(status, snapshot is null ? DeviceExecutionService.Current?.ConnectionError ?? SimulationService.Current?.ConnectionError ?? "未连接 · 可体验完整演示" : $"{mode} · {snapshot.Machine} · {(snapshot.IsArmed ? "已就绪" : "待确认就绪")}\n{snapshot.Execution?.State.ToString() ?? "等待任务"}");
+        SetLabel(status, snapshot is null ? DeviceExecutionService.Current?.ConnectionError ?? SimulationService.Current?.ConnectionError ?? "未连接 · 可体验完整演示" : $"{mode} · {(snapshot.Connection == "Connected" ? snapshot.Machine : "连接中断")} · {(snapshot.IsArmed ? "已就绪" : "待确认就绪")}\n{StateName(snapshot.Execution?.State)}");
         var execution = snapshot?.Execution; bool active = SessionMonitor.Active(execution?.State);
         bool ready = selected is not null && draft.IsCurrent && !converting && !active && snapshot is { Connection: "Connected", Machine: "Idle", IsArmed: true };
         startButton.Enabled = ready && confirmed.Checked; frameButton.Enabled = ready && confirmed.Checked;
@@ -455,7 +489,7 @@ public sealed class MainActivity : Activity
         cancelButton.Enabled = active && execution?.State != ExecutionState.Cancelling;
         jobProgress.Progress = execution is { TotalLines: > 0 } ? execution.AcknowledgedLines * 1000 / execution.TotalLines : 0;
         SetLabel(jobSummary, (draft.IsCurrent ? Description() : "输入已变化，请在作品页重新生成任务") + "\n" + (selected?.Parameters ?? "")
-            + (execution is null ? "" : $"\n{execution.State} · 已确认指令 {execution.AcknowledgedLines}/{execution.TotalLines}\n{execution.Error}"));
+            + (execution is null ? "" : $"\n{StateName(execution.State)} · 已确认指令 {execution.AcknowledgedLines}/{execution.TotalLines}\n{execution.Error}"));
         if (snapshot is not null) SetLabel(details, $"{snapshot.Firmware}\n{snapshot.Position}\n$30={snapshot.MaxPower?.ToString() ?? "未知"} · 激光模式 {snapshot.LaserMode} · RX {snapshot.ReceiveBufferBytes?.ToString() ?? "逐行"}\n确认行 {snapshot.Execution?.AcknowledgedLines}/{snapshot.Execution?.TotalLines}\n{snapshot.Error ?? snapshot.Execution?.Error}");
         handler.PostDelayed(Refresh, 250);
     }
