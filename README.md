@@ -4,9 +4,9 @@ C# / .NET for Android 原生激光雕刻控制工具。支持 USB OTG 连接 GRB
 
 ## 0.4 单屏移动界面
 
-[APK 镜像直链](https://gh-proxy.com/https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/releases/download/v0.3.0-demo/GRBL-Tool-Mobile-0.3.0.apk) · [下载与校验说明](docs/DOWNLOADS.md) · [59 项测试与 Android 模拟器验收](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43389716471)
+[APK 镜像直链](https://gh-proxy.com/https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/releases/download/v0.4.0-demo/GRBL-Tool-Mobile-0.4.0.apk) · [下载与校验说明](docs/DOWNLOADS.md) · [74 项测试与 Android 单屏/导入验收](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43401528060)
 
-从 [GitHub Actions](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions) 成功运行的 Artifacts 下载 `android-apk`，安装 `*-Signed.apk`。Android 10 及以上，打开设备页点击“体验完整演示”。[完整体验与安装说明](docs/DEMO.md)。
+从上面的 APK 镜像直链下载并安装。Android 10 及以上、ARM64 或 x86_64，打开设备页点击“体验完整演示”。[完整体验与安装说明](docs/DEMO.md)。
 
 本版新增固定底部导航、单屏操作、分步参数、分页历史、输入法适配，以及扩展名、MIME、大小和真实内容的统一导入检查。主流程不使用上下滚动。设计资料与文件白名单见 [移动界面规范](docs/MOBILE_UI.md)。
 
@@ -28,9 +28,9 @@ C# / .NET for Android 原生激光雕刻控制工具。支持 USB OTG 连接 GRB
 ## 使用流程
 
 1. 设备页扫描并选择端口，授权连接。
-2. 等待状态，再点击“读取固件与配置”。
-3. 设置与实机一致的工作区域、进给上限和 $30 功率范围。
-4. 定位并设置 G54 工件零点，等待新 WPos 后点击“确认设备就绪”。
+2. 等待状态，再点击“读取配置”。
+3. 在设备“参数”分类分步设置工作区域、进给上限和 $30 功率范围。
+4. 在“定位”分类设置工件零点，等待新 WPos 后点击“确认就绪”。
 5. 作品页导入文件；位图/SVG 填写参数后生成并保存。
 6. 查看路径，按需要先进行无光范围预跑。
 7. 加工页确认设备、坐标和现场条件后开始。
