@@ -2,13 +2,13 @@
 
 C# / .NET for Android 原生激光雕刻控制工具。支持 USB OTG 连接 GRBL 1.1，独立前台执行、G-code 工作流、位图与 SVG 转换。
 
-## 0.4 单屏移动界面
+## 0.5 图像处理与统一交互
 
-[APK 镜像直链](https://gh-proxy.com/https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/releases/download/v0.4.0-demo/GRBL-Tool-Mobile-0.4.0.apk) · [下载与校验说明](docs/DOWNLOADS.md) · [74 项测试与 Android 单屏/导入验收](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43401528060)
+[APK 镜像直链](https://gh-proxy.com/https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/releases/download/v0.5.0-demo/GRBL-Tool-Mobile-0.5.0.apk) · [下载与校验说明](docs/DOWNLOADS.md) · [87 项测试与 Android 交互验收](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43529454785)
 
 从上面的 APK 镜像直链下载并安装。Android 10 及以上、ARM64 或 x86_64，打开设备页点击“体验完整演示”。[完整体验与安装说明](docs/DEMO.md)。
 
-本版新增固定底部导航、单屏操作、分步参数、分页历史、输入法适配，以及扩展名、MIME、大小和真实内容的统一导入检查。主流程不使用上下滚动。设计资料与文件白名单见 [移动界面规范](docs/MOBILE_UI.md)。
+本版将选择与确认统一为应用内页面，错误使用顶部提示；新增可配置毫米/像素尺寸上限及等比例缩小、实验性轮廓提取与可切换光栅算法。保留固定底部导航、分步参数、分页历史、输入法适配，以及扩展名、MIME、大小和真实内容的统一导入检查。主流程不使用上下滚动。设计资料与文件白名单见 [移动界面规范](docs/MOBILE_UI.md)。
 
 保留实际工作坐标预检、参数修改失效、人工就绪、字符流控、进度节流、缓存预览、任务期唤醒锁与通知暂停。完整演示复用 USB 会话、任务和历史链路。
 
@@ -21,6 +21,7 @@ C# / .NET for Android 原生激光雕刻控制工具。支持 USB OTG 连接 GRB
 - G-code 完整预检、毫米/英寸、绝对/相对 XY、模态、速度/功率/区域检查。
 - 任务准备、哈希校验、持久化启动去重、暂停/继续、保持加复位取消、完成屏障。
 - PNG/JPG 等位图的缩放、EXIF 方向校正、比例裁剪、90° 旋转、灰度、Gamma、阈值、反色、Floyd–Steinberg 抖动和双向扫描。
+- 可配置最大加工宽高与处理像素，超限等比例缩小，摘要显示实际尺寸；实验性轮廓支持灵敏度与短线过滤。
 - SVG 安全导入、光栅转换、基础图形与路径轮廓；使用 Svg.Skia、SkiaSharp 和 Clipper2。
 - 可缩放/平移预览、范围预跑、估时、任务库、执行历史、G-code 与日志导出。
 - 声明式设备 JSON 导入；独立星光扩展保留待确认的硬件信息。

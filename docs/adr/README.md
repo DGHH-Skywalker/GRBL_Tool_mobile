@@ -9,4 +9,6 @@
 
 - [0007：0.3 执行可靠性与完整演示](0007-v03-execution-and-demo.md)。
 
+- [0008：统一应用内交互与有界图像处理](0008-image-processing-and-in-app-flows.md)。
+
 这些记录描述当前已实现边界，详细目标见完整方案。

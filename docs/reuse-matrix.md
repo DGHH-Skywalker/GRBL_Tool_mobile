@@ -20,3 +20,5 @@
 图像导入已整理为独立的 LaserMobile.Imaging.Skia 项目，核心 CI 使用真实 Skia Linux native 运行 PNG/SVG 与 Clipper2 转换用例。Android 继续使用对应 Android native assets。
 
 0.4 沿用 Android 原生 Views、SkiaSharp、Svg.Skia、Clipper2 与现有 GRBL 解析器。文件类型检测通过 Skia 编码识别与完整解码、现有 SVG 验证和 G-code 预检完成。未新增运行时依赖。布局与文件选择规范来源及对应决策见 [MOBILE_UI.md](MOBILE_UI.md)。
+
+0.5 继续复用 SkiaSharp 的 SKCodec 缩小解码和 Canvas 矩阵采样，使用 Clipper2 简化提取路径。未新增运行时依赖。已评估 OpenCvSharp Android 文档及 NuGet：上游 Android 运行包仍采用 CI 本地产物，公开 flat-container 的 opencvsharp5.runtime.android 在调查时返回 404。采用可替换的有界 C# Canny/路径适配层，避免引入自建 NDK 发布链；调查链接和决定见 [ADR 0008](adr/0008-image-processing-and-in-app-flows.md)。

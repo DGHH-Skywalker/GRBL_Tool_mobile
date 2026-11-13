@@ -146,8 +146,12 @@ public static class ArtworkImporter
             }
             if (paths.Count == 0) throw new FormatException("SVG 没有路径");
             float minX = paths.Min(p => p.Bounds.Left), minY = paths.Min(p => p.Bounds.Top), maxX = paths.Max(p => p.Bounds.Right), maxY = paths.Max(p => p.Bounds.Bottom);
-            var physical = ImageSizing.FitPhysical(maxX - minX, maxY - minY, settings.WidthMillimeters, options, limits);
-            double scale = physical.Width / (maxX - minX);
+            double pathWidth = maxX - minX, pathHeight = maxY - minY;
+            // A horizontal SVG path has a valid zero-height envelope.
+            double fittedWidth = pathHeight == 0 && pathWidth > 0
+                ? Math.Min(settings.WidthMillimeters, Math.Min(options.MaxWidthMillimeters, limits.Width))
+                : ImageSizing.FitPhysical(pathWidth, pathHeight, settings.WidthMillimeters, options, limits).Width;
+            double scale = fittedWidth / pathWidth;
             if (!double.IsFinite(scale) || scale <= 0) throw new FormatException("SVG 宽度无效");
             var code = new StringBuilder("G21\nG90\nM5\n"); int total = 0;
             foreach (var path in paths)

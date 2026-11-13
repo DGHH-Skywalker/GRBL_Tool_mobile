@@ -62,6 +62,12 @@ public sealed class ImageProcessingTests
             Assert.Equal(10, result.Analysis.MaxX, 2); Assert.Equal(20, result.Analysis.MaxY, 2);
         }
     }
+    [Fact] public void HorizontalSvgLineRetainsItsValidZeroHeightEnvelope()
+    {
+        byte[] svg = System.Text.Encoding.UTF8.GetBytes("<svg xmlns='http://www.w3.org/2000/svg'><line x1='10' y1='20' x2='110' y2='20'/></svg>");
+        var result = ArtworkImporter.ConvertDetailed(svg, "line.svg", Settings, Limits, true, default, options: new(MaxWidthMillimeters: 12));
+        Assert.Equal(12, result.Analysis.MaxX, 3); Assert.Equal(0, result.Analysis.MaxY); Assert.True(result.Analysis.EmitsLaser);
+    }
     [Fact] public void InvalidLimitsAndCancellationAreExplicit()
     {
         Assert.Throws<ArgumentException>(() => new ImageProcessingOptions(0, 100).Validate());
