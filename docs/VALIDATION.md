@@ -37,4 +37,23 @@
 
 所有编译与测试均交由 GitHub Actions。本地进行源码编辑与静态 diff 检查。新增用例覆盖实际起点、首个运动模态、旧转换失效、字符窗口容量、暂停与继续、模拟设备端到端完成、复位重新就绪和连接故障历史。
 
-Actions 同时生成签名 APK 和 SHA256，Android API 35 模拟器检查安装与完整交互流程，截图及日志作为独立 artifact。最终通过的提交与运行链接将在 CI 完成后补入。
+Actions 同时生成签名 APK 和 SHA256，Android API 35 模拟器检查安装与完整交互流程，截图及日志作为独立 artifact。最终交付的功能提交：`2029bb38b87b05fa051fca51717aaae074fd81f2`。
+
+[完整通过的 GitHub Actions 运行](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43389716471)。
+
+- 核心测试：59 项通过，0 失败、0 跳过；包含真实 Skia PNG/SVG 转换及 SQLite 会话工作流。
+- CLI 模拟器：Completed，6 行已发送/已确认，控制器 Idle。
+- Android Release：构建成功，签名校验成功。APK 包含 arm64-v8a 与 x86_64。
+- Android API 35 / Pixel 2 模拟器：安装、完整演示、预览、开始、暂停、继续、按 Home 后后台完成、返回应用、执行历史、修改参数后禁用旧任务，全部通过。最终这一轮未遇到系统桌面 ANR。
+- [签名 APK 与校验文件](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43389716471/artifacts/14020267490)。
+- [模拟器截图、UI XML、PASS 结果与 logcat](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43389716471/artifacts/14019873821)。
+
+APK SHA256：
+
+```text
+e80db22c46f7093867752ac2556ac081e0adb17a27f7d79f07a55d6bcae135e9
+```
+
+已下载 APK 并独立核对该校验值，已查看预览与后台完成页面的模拟器截图。SDK 与 workload set 均固定为 10.0.403，locked restore 保持启用。此前 CI 暴露的复位后误保持、Android 类型冲突、浮动 workload 依赖锁不一致与模拟器系统桌面启动问题均已处理，并由最终完整流水线验证。
+
+实机验收范围仍包括 USB 芯片插拔/授权、具体控制板的屏障语义、实际运动、锁屏与长时耗电、现场激光加工；本轮未连接实体设备。

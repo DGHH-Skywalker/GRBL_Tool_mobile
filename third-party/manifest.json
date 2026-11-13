@@ -26,7 +26,7 @@
       "name": "UsbSerialForAndroid",
       "version": "2.0.1",
       "license": "MIT",
-      "usage": "Android USB discovery"
+      "usage": "Android USB discovery, serial read/write and USB permission integration"
     },
     {
       "name": "SkiaSharp.Views",
