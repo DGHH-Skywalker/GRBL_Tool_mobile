@@ -29,6 +29,9 @@ jobs:
           set -euo pipefail
           gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" > source-run.json
           jq -e --arg sha "$SOURCE_SHA" '.head_sha == $sha and .status == "completed" and .conclusion == "success"' source-run.json
+          # The release tag points to this publishing revision. Its app code must match the audited source.
+          gh api "repos/$GH_REPO/compare/$SOURCE_SHA...$GITHUB_SHA" > release-diff.json
+          jq -e 'all(.files[]; (.filename | startswith("docs/")) or .filename == "README.md" or .filename == ".github/workflows/distribute-demo.yml")' release-diff.json
       - uses: actions/download-artifact@v4
         with:
           name: android-apk
@@ -67,4 +70,4 @@ jobs:
           原始已验收安装包，保留其签名与 SHA256；源码版本为 c20b0b33ac8369ce4b86acc3c739167f28fde32a。
           源码采用 GPL-3.0-or-later；源码和第三方声明包含在本标签对应的仓库中。
           NOTES
-          gh release create "$RELEASE_TAG" "package/$APK_NAME" package/SHA256SUMS.txt --target "$SOURCE_SHA" --prerelease --title 'GRBL Tool Mobile 0.4.0 Demo' --notes-file release-notes.md
+          gh release create "$RELEASE_TAG" "package/$APK_NAME" package/SHA256SUMS.txt --target "$GITHUB_SHA" --prerelease --title 'GRBL Tool Mobile 0.4.0 Demo' --notes-file release-notes.md
