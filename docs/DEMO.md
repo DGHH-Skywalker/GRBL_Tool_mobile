@@ -2,6 +2,8 @@
 
 ## 下载与安装
 
+[APK 镜像直接下载](https://gh-proxy.com/https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/releases/download/v0.3.0-demo/GRBL-Tool-Mobile-0.3.0.apk)。下载后直接安装，下载与校验信息见 [DOWNLOADS.md](DOWNLOADS.md)。
+
 [下载本次通过验收的 0.3.0 APK](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43389716471/artifacts/14020267490) · [查看模拟器截图与测试证据](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43389716471/artifacts/14019873821)。
 
 打开 [GitHub Actions](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions)，选择成功的 Build and test 运行，在 Artifacts 下载 `android-apk`，解压后安装 `*-Signed.apk`。系统要求 Android 10（API 29）及以上，ARM64 或 x86_64。`SHA256SUMS.txt` 提供 APK 文件校验值。
