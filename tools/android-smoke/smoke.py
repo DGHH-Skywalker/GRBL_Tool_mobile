@@ -62,6 +62,10 @@ def wait(label, timeout=25, exact=False):
 
 def tap(label, exact=True):
     node = wait(label, exact=exact)
+    deadline = time.monotonic() + 10
+    while node.get("enabled") != "true" and time.monotonic() < deadline:
+        time.sleep(.3)
+        node = wait(label, exact=exact)
     assert node.get("enabled") == "true", f"Disabled: {label}"
     x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds")))
     assert x2 > x1 and y2 > y1, f"Empty hit target: {label}"
@@ -102,11 +106,12 @@ def fixture_files():
 def choose_bitmap(name):
     tap("导入作品")
     tap("位图 · PNG / JPG / WebP / BMP")
-    wait(name, timeout=40, exact=True)
+    # Image-grid documents expose filename plus metadata as content-desc.
+    wait(name, timeout=40, exact=False)
     excluded = find("unsupported.pdf")
     if excluded is not None:
         assert excluded.get("enabled") == "false", "Unsupported PDF is enabled by the bitmap picker"
-    tap(name)
+    tap(name, exact=False)
 
 
 def screenshot(name):
