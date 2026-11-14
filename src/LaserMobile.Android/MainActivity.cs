@@ -86,10 +86,11 @@ public sealed partial class MainActivity : Activity
     private async Task Scan()
     {
         var manager = (UsbManager)GetSystemService(UsbService)!;
-        var drivers = await Task.Run(() => new UsbSerialProber(UsbSerialProber.DefaultProbeTable).FindAllDrivers(manager));
-        devices.Clear(); foreach (var d in drivers) foreach (var port in d.Ports) devices.Add((port, $"{d.Device.VendorId:X4}:{d.Device.ProductId:X4} 端口 {port.PortNumber}"));
-        selectedPort = devices.Count == 0 ? -1 : 0; ports.Text = selectedPort < 0 ? "未发现 USB 串口" : devices[selectedPort].Label;
-        if (devices.Count == 0) ShowError("未发现 USB 串口，请检查 OTG 连接后重试"); else ClearNotice();
+        var settings = ReadUsbSettings();
+        usbInventory = await Task.Run(() => UsbCatalog.Enumerate(manager, settings));
+        devices.Clear(); foreach (var row in usbInventory) foreach (var port in row.Ports) devices.Add((port, $"{row.Device.VendorId:X4}:{row.Device.ProductId:X4} 端口 {port.PortNumber}"));
+        selectedPort = devices.Count == 0 ? -1 : 0; ports.Text = selectedPort < 0 ? $"USB {usbInventory.Length} 个 · 串口未匹配" : devices[selectedPort].Label;
+        if (devices.Count == 0) ShowError(usbInventory.Length == 0 ? "Android 未枚举到 USB 设备，请检查 OTG 数据连接" : "USB 设备已识别，串口驱动未匹配，请打开 USB 设备诊断"); else ClearNotice();
     }
     private async Task Connect()
     {
@@ -98,7 +99,7 @@ public sealed partial class MainActivity : Activity
         var port = devices[selectedPort].Port; var manager = (UsbManager)GetSystemService(UsbService)!;
         if (!await UsbPermissionReceiver.Request(this, manager, port.Driver.Device)) throw new UnauthorizedAccessException("USB 授权被拒绝");
         if (OperatingSystem.IsAndroidVersionAtLeast(33) && CheckSelfPermission(Android.Manifest.Permission.PostNotifications) != Android.Content.PM.Permission.Granted) RequestPermissions([Android.Manifest.Permission.PostNotifications], 100);
-        using var intent = new Intent(this, typeof(DeviceExecutionService)); intent.PutExtra("device", port.Driver.Device.DeviceId); intent.PutExtra("port", port.PortNumber); intent.PutExtra("baud", checked((int)Value(baud))); StartForegroundService(intent);
+        using var intent = new Intent(this, typeof(DeviceExecutionService)); intent.PutExtra("device", port.Driver.Device.DeviceId); intent.PutExtra("port", port.PortNumber); intent.PutExtra("baud", checked((int)Value(baud))); intent.PutExtra("driver", port.Driver.GetType().Name); StartForegroundService(intent);
     }
     private static DeviceSession? CurrentSession() => DeviceExecutionService.Current?.Session ?? SimulationService.Current?.Session;
     private DeviceSession Session() => CurrentSession() ?? throw new InvalidOperationException("请连接 USB 设备或进入演示模式");

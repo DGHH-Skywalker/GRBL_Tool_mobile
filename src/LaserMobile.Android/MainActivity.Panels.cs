@@ -79,7 +79,7 @@ public sealed partial class MainActivity
         Button(screen, "返回", () => { ClosePanel(); return Task.CompletedTask; }); Render();
     }
 
-    private void ShowPagedText(string title, string message)
+    private void ShowPagedText(string title, string message, Action<LinearLayout>? footer = null, Func<Task>? back = null)
     {
         if (IsDestroyed) return;
         int pageIndex = 0; string[] chunks = [message.Replace("\r", "")];
@@ -88,7 +88,8 @@ public sealed partial class MainActivity
         screen.AddView(text, new LinearLayout.LayoutParams(-1, 0, 1));
         var pager = Row(screen); var previous = Button(pager, "上一页", () => { pageIndex--; Render(); return Task.CompletedTask; });
         var counter = Label(pager, "", 12, 1); var next = Button(pager, "下一页", () => { pageIndex++; Render(); return Task.CompletedTask; }); pager.Visibility = ViewStates.Gone;
-        Button(screen, "返回", () => { ClosePanel(); return Task.CompletedTask; });
+        footer?.Invoke(screen);
+        Button(screen, back is null ? "返回" : "返回设备列表", async () => { ClosePanel(); if (back is not null) await back(); });
         void Render()
         {
             pageIndex = Math.Clamp(pageIndex, 0, chunks.Length - 1); SetLabel(text, chunks[pageIndex]); SetLabel(counter, $"{pageIndex + 1}/{chunks.Length}");

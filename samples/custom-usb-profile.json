@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "custom-usb-example",
+  "displayName": "自定义串口配置示例",
+  "firmwareFamily": "grbl1.1",
+  "width": 40,
+  "height": 40,
+  "maxFeed": 1200,
+  "maxPower": 1000,
+  "usb": {
+    "dtr": "High",
+    "rts": "Preserve",
+    "mappings": [
+      { "vendorId": 4660, "productId": 22136, "driver": "CdcAcm" }
+    ]
+  }
+}

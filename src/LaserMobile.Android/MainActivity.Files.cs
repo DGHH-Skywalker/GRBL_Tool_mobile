@@ -82,6 +82,7 @@ public sealed partial class MainActivity
                     var preset = DevicePreset.Parse(new UTF8Encoding(false, true).GetString(accepted.Bytes).TrimStart('\ufeff'));
                     areaWidth.Text = preset.Width.ToString(CultureInfo.InvariantCulture); areaHeight.Text = preset.Height.ToString(CultureInfo.InvariantCulture);
                     maxFeed.Text = preset.MaxFeed.ToString(CultureInfo.InvariantCulture); maxPower.Text = preset.MaxPower.ToString(CultureInfo.InvariantCulture);
+                    if (preset.Usb is { } usb) SaveUsbSettings(usb);
                     artwork.Text = previous; ShowMessage("配置已导入", preset.DisplayName + "\n请读取设备配置后核对"); return;
                 }
                 source = accepted.Bytes; sourceName = accepted.Name; selected = null; prepared = null; preview?.Dispose(); preview = null; imagePreparation = null; quarterTurns = 0; ClearNotice();

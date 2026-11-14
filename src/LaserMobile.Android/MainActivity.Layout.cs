@@ -20,6 +20,9 @@ public sealed partial class MainActivity
     private TextView libraryPage = null!, historyPage = null!;
     private SKCanvasView? jobCanvas;
     private int libraryIndex, historyIndex;
+    private IReadOnlyList<StoredJob> cachedJobs = [];
+    private IReadOnlyList<HistoryEntry> cachedExecutions = [];
+    private bool historyLoading, historyReloadPending;
     private Action<int> artworkTabs = _ => { };
     private readonly List<Android.Graphics.Drawables.Drawable?> navigationIcons = [];
     private readonly List<LinearLayout> secondaryBars = [];
@@ -177,7 +180,7 @@ public sealed partial class MainActivity
         var row = Row(p); Button(row, "扫描 USB", Scan); Button(row, "授权并连接", Connect);
         row = Row(p); Button(row, "读取配置", () => Session().ReadConfiguration()); Button(row, "确认就绪", ArmDevice);
         Button(p, "体验完整演示", StartDemo);
-        Button(p, "断开连接", DisconnectDevice);
+        row = Row(p); Button(row, "USB 设备诊断", ShowUsbInventory); Button(row, "断开连接", DisconnectDevice);
         p = parts[1]; positionText = Label(p, "连接设备后显示工作坐标", 12, 2);
         jogStep = Number(p, "点动步长 mm（0.1–10）", "1", "jogStep");
         row = Row(p); Button(row, "X−", () => Session().Jog(-1, 0, Value(jogStep), 300)); Button(row, "X+", () => Session().Jog(1, 0, Value(jogStep), 300));
@@ -187,6 +190,9 @@ public sealed partial class MainActivity
         row = CompactRow(parts[2]); areaWidth = CompactNumber(row, "区域宽 mm", "工作区域宽度 mm", "40", "areaWidth"); areaHeight = CompactNumber(row, "区域高 mm", "工作区域高度 mm", "40", "areaHeight");
         row = CompactRow(parts[2]); maxFeed = CompactNumber(row, "进给上限", "进给上限 mm/min", "1200", "maxFeed"); maxPower = CompactNumber(row, "功率上限 S", "功率上限 S（设备 $30）", "1000", "maxPower");
         row = CompactRow(parts[2]); baud = CompactNumber(row, "波特率", "波特率", "115200", "baud");
+        row = Row(parts[2]); var usbSettings = ReadUsbSettings();
+        dtrButton = Button(row, "DTR · " + LineName(usbSettings.Dtr), () => { ChooseLine(true); return Task.CompletedTask; }); dtrButton.ContentDescription = "设置 DTR";
+        rtsButton = Button(row, "RTS · " + LineName(usbSettings.Rts), () => { ChooseLine(false); return Task.CompletedTask; }); rtsButton.ContentDescription = "设置 RTS";
         Button(parts[2], "导入设备配置 JSON", () => { OpenPicker(ImportKind.DeviceProfile); return Task.CompletedTask; });
         p = parts[3]; Label(p, "设备维护", 12, 1);
         row = Row(p); Button(row, "硬件回零", async () => { if (await Ask("回零", "确认回零开关、方向与设备 $22=1 配置？")) await Session().Home(true); }); Button(row, "报警解锁", async () => { if (await Ask("解锁", "确认已处理报警原因并检查位置？")) await Session().Unlock(true); });
@@ -253,7 +259,7 @@ public sealed partial class MainActivity
     {
         var parts = Tabs(pages[3], ["任务库", "执行记录"], out _);
         libraryCards = new LinearLayout(this) { Orientation = Orientation.Vertical }; parts[0].AddView(libraryCards, new LinearLayout.LayoutParams(-1, 0, 1));
-        var row = Row(parts[0]); libraryPager = row; libraryPrevious = Button(row, "上一页", () => { libraryIndex = Math.Max(0, libraryIndex - 1); RefreshHistory(); return Task.CompletedTask; }); libraryPage = Label(row, "1/1", 12, 1); libraryNext = Button(row, "下一页", () => { libraryIndex++; RefreshHistory(); return Task.CompletedTask; });
+        var row = Row(parts[0]); libraryPager = row; libraryPrevious = Button(row, "上一页", () => { libraryIndex = Math.Max(0, libraryIndex - 1); RenderHistory(); return Task.CompletedTask; }); libraryPage = Label(row, "1/1", 12, 1); libraryNext = Button(row, "下一页", () => { libraryIndex++; RenderHistory(); return Task.CompletedTask; });
         row = Row(parts[0]); Button(row, "导出任务", () => { if (selected is null) throw new InvalidOperationException("请先选择任务"); ExportDocument(21, selected.Name + ".nc"); return Task.CompletedTask; });
         Button(row, "删除所选", async () =>
         {
@@ -262,14 +268,31 @@ public sealed partial class MainActivity
             if (await Ask("删除任务", selected.Name)) { library.Delete(selected.Id); selected = null; prepared = null; preview?.Dispose(); preview = null; InvalidateDraft(); artwork.Text = "尚未选择任务"; canvas.Invalidate(); jobCanvas?.Invalidate(); RefreshHistory(); }
         });
         historyCards = new LinearLayout(this) { Orientation = Orientation.Vertical }; parts[1].AddView(historyCards, new LinearLayout.LayoutParams(-1, 0, 1));
-        row = Row(parts[1]); historyPager = row; historyPrevious = Button(row, "上一页", () => { historyIndex = Math.Max(0, historyIndex - 1); RefreshHistory(); return Task.CompletedTask; }); historyPage = Label(row, "1/1", 12, 1); historyNext = Button(row, "下一页", () => { historyIndex++; RefreshHistory(); return Task.CompletedTask; });
+        row = Row(parts[1]); historyPager = row; historyPrevious = Button(row, "上一页", () => { historyIndex = Math.Max(0, historyIndex - 1); RenderHistory(); return Task.CompletedTask; }); historyPage = Label(row, "1/1", 12, 1); historyNext = Button(row, "下一页", () => { historyIndex++; RenderHistory(); return Task.CompletedTask; });
         Button(parts[1], "刷新记录", () => { RefreshHistory(); return Task.CompletedTask; });
-        libraryCards.LayoutChange += (_, _) => { if (currentPage == 3 && !PanelVisible) RefreshHistory(); };
-        historyCards.LayoutChange += (_, _) => { if (currentPage == 3 && !PanelVisible) RefreshHistory(); };
+        libraryCards.LayoutChange += (_, _) => { if (currentPage == 3 && !PanelVisible) RenderHistory(); };
+        historyCards.LayoutChange += (_, _) => { if (currentPage == 3 && !PanelVisible) RenderHistory(); };
     }
     private void RefreshHistory()
     {
-        var jobs = library.List(); var entries = executions.History();
+        if (historyLoading) { historyReloadPending = true; return; }
+        historyLoading = true; _ = LoadHistory();
+    }
+    private async Task LoadHistory()
+    {
+        try
+        {
+            var data = await Task.Run(() => (Jobs: library.List(), Executions: executions.History()));
+            if (IsDestroyed) return;
+            cachedJobs = data.Jobs; cachedExecutions = data.Executions;
+            if (currentPage == 3 && !PanelVisible) RenderHistory();
+        }
+        catch (Exception e) { if (!IsDestroyed) ShowError(e.Message); }
+        finally { historyLoading = false; if (historyReloadPending && !IsDestroyed) { historyReloadPending = false; RefreshHistory(); } }
+    }
+    private void RenderHistory()
+    {
+        var jobs = cachedJobs; var entries = cachedExecutions;
         int libraryCount = HistoryCapacity(libraryCards, libraryPager, jobs.Count, libraryCardHeight, false);
         int historyCount = HistoryCapacity(historyCards, historyPager, entries.Count, historyCardHeight, true);
         libraryIndex = Math.Clamp(libraryIndex, 0, Math.Max(0, (jobs.Count - 1) / libraryCount)); historyIndex = Math.Clamp(historyIndex, 0, Math.Max(0, (entries.Count - 1) / historyCount));
@@ -307,7 +330,7 @@ public sealed partial class MainActivity
             int a = libraryCards.GetChildAt(0) is LinearLayout libraryCard ? libraryCard.Height : 0, b = historyCards.GetChildAt(0) is LinearLayout historyCard ? historyCard.Height : 0;
             bool changed = a > 0 && libraryCardHeight != a || b > 0 && historyCardHeight != b;
             if (a > 0) libraryCardHeight = a; if (b > 0) historyCardHeight = b;
-            if (changed && currentPage == 3 && !PanelVisible) RefreshHistory();
+            if (changed && currentPage == 3 && !PanelVisible) RenderHistory();
         });
     }
     protected override void OnSaveInstanceState(Bundle outState)

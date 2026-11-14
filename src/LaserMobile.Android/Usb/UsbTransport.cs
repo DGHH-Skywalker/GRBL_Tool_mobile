@@ -9,16 +9,23 @@ public sealed class UsbTransport : IByteTransport
     private readonly UsbSerialPort port;
     private readonly UsbDeviceConnection connection;
     private bool disposed;
-    public UsbTransport(UsbManager manager, UsbSerialPort port, int baud)
+    public UsbTransport(UsbManager manager, UsbSerialPort port, int baud, UsbConnectionSettings? settings = null)
     {
         if (!manager.HasPermission(port.Driver.Device)) throw new UnauthorizedAccessException("USB 权限尚未授予");
         if (baud is < 1200 or > 2000000) throw new ArgumentOutOfRangeException(nameof(baud));
+        settings ??= new UsbConnectionSettings(); settings.Validate();
         this.port = port;
         connection = manager.OpenDevice(port.Driver.Device) ?? throw new IOException("无法打开 USB 设备");
-        try { port.Open(connection); port.SetParameters(baud, 8, StopBits.One, Parity.None); }
-        catch { connection.Close(); connection.Dispose(); throw; }
-        // Do not toggle DTR/RTS: board-specific reset policy is not inferred from bridge IDs.
+        bool opened = false;
+        try
+        {
+            port.Open(connection); opened = true; port.SetParameters(baud, 8, StopBits.One, Parity.None);
+            settings.ApplyLines(value => SetLine("DTR", () => port.SetDTR(value)), value => SetLine("RTS", () => port.SetRTS(value)));
+        }
+        catch { if (opened) { try { port.Close(); } catch (Exception) { } } connection.Close(); connection.Dispose(); throw; }
     }
+    private static void SetLine(string name, Action set)
+    { try { set(); } catch (Exception e) { throw new IOException($"{name} 设置失败：{e.Message}", e); } }
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
