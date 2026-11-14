@@ -90,7 +90,7 @@ public sealed partial class MainActivity
             pageSize = capacity; navigation.Visibility = visibility; Render();
             list.Post(Reflow);
         }
-        list.LayoutChange += (_, _) => Reflow(); Render(); list.Post(Reflow);
+        list.LayoutChange += (_, _) => list.Post(Reflow); Render(); list.Post(Reflow);
     }
 
     private void ShowPagedText(string title, string message, Action<LinearLayout>? footer = null, Func<Task>? back = null)
