@@ -237,6 +237,9 @@ try:
     screenshot("07a-all-parameters")
     tap("选择生成方式")
     wait("选择生成方式")
+    assert find("上一页") is None and find("下一页") is None
+    for algorithm in ("灰度 · LaserGRBL", "轮廓 · OpenCV", "黑白阈值", "Floyd–Steinberg", "SVG 路径轮廓", "Atkinson", "Burkes", "Jarvis", "Stucki", "Sierra 2", "Sierra 3", "Sierra Lite"):
+        assert find(algorithm) is not None, algorithm
     no_scroll()
     screenshot("07b-app-algorithm-picker")
     tap("轮廓 · OpenCV")

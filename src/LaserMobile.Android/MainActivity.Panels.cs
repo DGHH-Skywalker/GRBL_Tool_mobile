@@ -56,10 +56,15 @@ public sealed partial class MainActivity
     private void Choices(string title, IReadOnlyList<string> options, Func<int, Task> choose, int selected = -1)
     {
         var screen = OpenPanel(title); var list = new LinearLayout(this) { Orientation = Orientation.Vertical }; screen.AddView(list, new LinearLayout.LayoutParams(-1, 0, 1));
-        int page = 0; const int pageSize = 12; int columns = options.Count > 6 ? 2 : 1;
-        Button? previous = null, next = null;
+        int page = 0, pageSize = 12; int columns = options.Count > 6 ? 2 : 1;
+        Button previous = null!, next = null!;
+        var navigation = Row(screen); navigation.Visibility = ViewStates.Gone;
+        previous = Button(navigation, "上一页", () => { page--; Render(); return Task.CompletedTask; });
+        next = Button(navigation, "下一页", () => { page++; Render(); return Task.CompletedTask; });
+        Button(screen, "返回", () => { ClosePanel(); return Task.CompletedTask; });
         void Render()
         {
+            page = Math.Clamp(page, 0, Math.Max(0, (options.Count - 1) / pageSize));
             list.RemoveAllViews(); LinearLayout row = list;
             for (int i = page * pageSize; i < Math.Min(options.Count, (page + 1) * pageSize); i++)
             {
@@ -67,16 +72,25 @@ public sealed partial class MainActivity
                 int index = i; var choice = Button(row, (index == selected ? "✓ " : "") + options[i], async () => { ClosePanel(); await choose(index); });
                 choice.ContentDescription = options[i]; choice.TextSize = columns > 1 ? 11 : 13; StyleButton(choice, index == selected);
             }
-            if (previous is not null) previous.Visibility = page == 0 ? ViewStates.Invisible : ViewStates.Visible;
-            if (next is not null) next.Visibility = (page + 1) * pageSize >= options.Count ? ViewStates.Invisible : ViewStates.Visible;
+            previous.Visibility = page == 0 ? ViewStates.Invisible : ViewStates.Visible;
+            next.Visibility = (page + 1) * pageSize >= options.Count ? ViewStates.Invisible : ViewStates.Visible;
         }
-        if (options.Count > pageSize)
+        void Reflow()
         {
-            var navigation = Row(screen);
-            previous = Button(navigation, "上一页", () => { page--; Render(); return Task.CompletedTask; });
-            next = Button(navigation, "下一页", () => { page++; Render(); return Task.CompletedTask; });
+            if (list.Height <= 0) return;
+            var first = list.GetChildAt(0); int itemHeight = first?.Height ?? 0;
+            if (first?.LayoutParameters is ViewGroup.MarginLayoutParams margin) itemHeight += margin.TopMargin + margin.BottomMargin;
+            if (itemHeight <= 0) itemHeight = Dp(54);
+            int fullHeight = list.Height + (navigation.Visibility == ViewStates.Visible ? navigation.Height : 0);
+            bool fits = (long)((options.Count + columns - 1) / columns) * itemHeight <= fullHeight;
+            int available = fullHeight - (fits ? 0 : Math.Max(navigation.Height, Dp(54)));
+            int capacity = Math.Max(columns, available / itemHeight * columns);
+            var visibility = fits ? ViewStates.Gone : ViewStates.Visible;
+            if (capacity == pageSize && navigation.Visibility == visibility) return;
+            pageSize = capacity; navigation.Visibility = visibility; Render();
+            list.Post(Reflow);
         }
-        Button(screen, "返回", () => { ClosePanel(); return Task.CompletedTask; }); Render();
+        list.LayoutChange += (_, _) => Reflow(); Render(); list.Post(Reflow);
     }
 
     private void ShowPagedText(string title, string message, Action<LinearLayout>? footer = null, Func<Task>? back = null)

@@ -22,7 +22,9 @@ public sealed partial class MainActivity
     private int libraryIndex, historyIndex;
     private IReadOnlyList<StoredJob> cachedJobs = [];
     private IReadOnlyList<HistoryEntry> cachedExecutions = [];
-    private bool historyLoading, historyReloadPending;
+    private bool historyLoading, historyReloadPending, historyRenderPending;
+    private int historyDataVersion;
+    private (int Version, int Page, int Capacity) renderedLibrary = (-1, -1, -1), renderedHistory = (-1, -1, -1);
     private Action<int> artworkTabs = _ => { };
     private readonly List<Android.Graphics.Drawables.Drawable?> navigationIcons = [];
     private readonly List<LinearLayout> secondaryBars = [];
@@ -270,8 +272,8 @@ public sealed partial class MainActivity
         historyCards = new LinearLayout(this) { Orientation = Orientation.Vertical }; parts[1].AddView(historyCards, new LinearLayout.LayoutParams(-1, 0, 1));
         row = Row(parts[1]); historyPager = row; historyPrevious = Button(row, "上一页", () => { historyIndex = Math.Max(0, historyIndex - 1); RenderHistory(); return Task.CompletedTask; }); historyPage = Label(row, "1/1", 12, 1); historyNext = Button(row, "下一页", () => { historyIndex++; RenderHistory(); return Task.CompletedTask; });
         Button(parts[1], "刷新记录", () => { RefreshHistory(); return Task.CompletedTask; });
-        libraryCards.LayoutChange += (_, _) => { if (currentPage == 3 && !PanelVisible) RenderHistory(); };
-        historyCards.LayoutChange += (_, _) => { if (currentPage == 3 && !PanelVisible) RenderHistory(); };
+        libraryCards.LayoutChange += (_, _) => ScheduleHistoryRender();
+        historyCards.LayoutChange += (_, _) => ScheduleHistoryRender();
     }
     private void RefreshHistory()
     {
@@ -284,11 +286,17 @@ public sealed partial class MainActivity
         {
             var data = await Task.Run(() => (Jobs: library.List(), Executions: executions.History()));
             if (IsDestroyed) return;
-            cachedJobs = data.Jobs; cachedExecutions = data.Executions;
+            cachedJobs = data.Jobs; cachedExecutions = data.Executions; historyDataVersion++;
             if (currentPage == 3 && !PanelVisible) RenderHistory();
         }
         catch (Exception e) { if (!IsDestroyed) ShowError(e.Message); }
         finally { historyLoading = false; if (historyReloadPending && !IsDestroyed) { historyReloadPending = false; RefreshHistory(); } }
+    }
+    private void ScheduleHistoryRender()
+    {
+        if (historyRenderPending || IsDestroyed || currentPage != 3 || PanelVisible) return;
+        historyRenderPending = true;
+        root.Post(() => { historyRenderPending = false; if (!IsDestroyed && currentPage == 3 && !PanelVisible) RenderHistory(); });
     }
     private void RenderHistory()
     {
@@ -296,19 +304,28 @@ public sealed partial class MainActivity
         int libraryCount = HistoryCapacity(libraryCards, libraryPager, jobs.Count, libraryCardHeight, false);
         int historyCount = HistoryCapacity(historyCards, historyPager, entries.Count, historyCardHeight, true);
         libraryIndex = Math.Clamp(libraryIndex, 0, Math.Max(0, (jobs.Count - 1) / libraryCount)); historyIndex = Math.Clamp(historyIndex, 0, Math.Max(0, (entries.Count - 1) / historyCount));
-        libraryCards.RemoveAllViews(); historyCards.RemoveAllViews();
+        var libraryKey = (historyDataVersion, libraryIndex, libraryCount); var historyKey = (historyDataVersion, historyIndex, historyCount);
+        if (renderedLibrary != libraryKey)
+        {
+        renderedLibrary = libraryKey; libraryCards.RemoveAllViews();
         foreach (var job in jobs.Skip(libraryIndex * libraryCount).Take(libraryCount))
         {
-            var card = new LinearLayout(this) { Orientation = Orientation.Vertical }; libraryCards.AddView(card);
+            var card = new LinearLayout(this) { Orientation = Orientation.Vertical }; libraryCards.AddView(card, new LinearLayout.LayoutParams(-1, -2));
             Button(card, job.Name, async () => { await LoadSaved(job.Id); ShowPage(1); artworkTabs(0); }); Label(card, $"{job.CreatedAt.ToLocalTime():MM-dd HH:mm} · {job.Hash[..12]}", 12, 1);
         }
+        if (jobs.Count == 0) Label(libraryCards, "生成任务后显示在这里");
+        }
+        if (renderedHistory != historyKey)
+        {
+        renderedHistory = historyKey; historyCards.RemoveAllViews();
         foreach (var entry in entries.Skip(historyIndex * historyCount).Take(historyCount))
         {
-            var card = new LinearLayout(this) { Orientation = Orientation.Vertical }; historyCards.AddView(card);
+            var card = new LinearLayout(this) { Orientation = Orientation.Vertical }; historyCards.AddView(card, new LinearLayout.LayoutParams(-1, -2));
             Label(card, entry.JobName ?? entry.Id.ToString()[..8], 14, 1); Label(card, $"{StateName(entry.State)} · {entry.AcknowledgedLines}/{entry.TotalLines} 行", 12, 1);
             Button(card, "执行详情", () => { ShowPagedText("执行详情", $"{entry.JobName}\n{StateName(entry.State)} · {entry.AcknowledgedLines}/{entry.TotalLines} 行\n{entry.StartedAt}\n{entry.Parameters}\n{entry.Hash}\n{entry.Error}"); return Task.CompletedTask; });
         }
-        if (jobs.Count == 0) Label(libraryCards, "生成任务后显示在这里"); if (entries.Count == 0) Label(historyCards, "开始加工后显示执行记录");
+        if (entries.Count == 0) Label(historyCards, "开始加工后显示执行记录");
+        }
         libraryPage.Text = $"{libraryIndex + 1}/{Math.Max(1, (jobs.Count + libraryCount - 1) / libraryCount)}"; historyPage.Text = $"{historyIndex + 1}/{Math.Max(1, (entries.Count + historyCount - 1) / historyCount)}";
         libraryPrevious.Visibility = libraryIndex == 0 ? ViewStates.Invisible : ViewStates.Visible; libraryNext.Visibility = (libraryIndex + 1) * libraryCount >= jobs.Count ? ViewStates.Invisible : ViewStates.Visible;
         historyPrevious.Visibility = historyIndex == 0 ? ViewStates.Invisible : ViewStates.Visible; historyNext.Visibility = (historyIndex + 1) * historyCount >= entries.Count ? ViewStates.Invisible : ViewStates.Visible;
