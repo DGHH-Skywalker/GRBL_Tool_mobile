@@ -13,4 +13,6 @@
 
 - [0009：桌面 LaserGRBL 算法复用与集中参数页](0009-desktop-lasergrbl-cam-and-single-page-forms.md)。
 
+- [0010：OpenCV 保真轮廓、实际空间排版与短动画](0010-opencv-fidelity-and-adaptive-layout.md)。
+
 这些记录描述当前已实现边界，详细目标见完整方案。

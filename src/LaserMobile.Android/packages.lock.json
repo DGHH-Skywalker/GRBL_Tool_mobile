@@ -67,7 +67,8 @@
         "contentHash": "YlTamXppEQls6DYWt7RdUuwWDb0lyw/vXCaGeQpLCpsLmfwGuCkOz/vIGgMTV7ECsJcavkCOkxZXv9s8rdAHkQ=="
       },
       "OpenCvSharp4": {
-        "type": "Transitive",
+        "type": "CentralTransitive",
+        "requested": "[4.13.0.20260602, )",
         "resolved": "4.13.0.20260602",
         "contentHash": "NXQBXXWgeVnmGhRWX5KvhGFIagI9ZGeZgip07GgSbRD5uDNembCyqW+9dPwO/ZOweVUkWihrwJYDo8GG413tEQ=="
       },
