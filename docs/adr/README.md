@@ -11,4 +11,6 @@
 
 - [0008：统一应用内交互与有界图像处理](0008-image-processing-and-in-app-flows.md)。
 
+- [0009：桌面 LaserGRBL 算法复用与集中参数页](0009-desktop-lasergrbl-cam-and-single-page-forms.md)。
+
 这些记录描述当前已实现边界，详细目标见完整方案。

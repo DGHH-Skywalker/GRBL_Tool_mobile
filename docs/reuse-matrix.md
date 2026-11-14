@@ -22,3 +22,5 @@
 0.4 沿用 Android 原生 Views、SkiaSharp、Svg.Skia、Clipper2 与现有 GRBL 解析器。文件类型检测通过 Skia 编码识别与完整解码、现有 SVG 验证和 G-code 预检完成。未新增运行时依赖。布局与文件选择规范来源及对应决策见 [MOBILE_UI.md](MOBILE_UI.md)。
 
 0.5 继续复用 SkiaSharp 的 SKCodec 缩小解码和 Canvas 矩阵采样，使用 Clipper2 简化提取路径。未新增运行时依赖。已评估 OpenCvSharp Android 文档及 NuGet：上游 Android 运行包仍采用 CI 本地产物，公开 flat-container 的 opencvsharp5.runtime.android 在调查时返回 404。采用可替换的有界 C# Canny/路径适配层，避免引入自建 NDK 发布链；调查链接和决定见 [ADR 0008](adr/0008-image-processing-and-in-app-flows.md)。
+
+0.6 直接导入 LaserGRBL 固定提交 `1f9337b3af27133f8b1696e41cc110f2af74d04f` 的 CsPotrace 核心、Cyotek ARGB/扩散基类与八套确定性核，适配 ImageTransform 和 GrblFile 的灰度、阈值、整数 S、连续同功率段与白区跳过。来源清单、许可证和改动逐项记录在 third-party/manifest.json；原始许可存于 third-party/notices。框架依赖锁保持原样。接入与验证说明见 [ADR 0009](adr/0009-desktop-lasergrbl-cam-and-single-page-forms.md)。

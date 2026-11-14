@@ -178,6 +178,7 @@ public sealed partial class MainActivity : Activity
             prepared = result; selected = job; jobName = name; imagePreparation = converted?.Image; ClearNotice(); preview?.Dispose(); preview = new ToolpathPreview(result); confirmed.Checked = false; artwork.Text = Description(); canvas.Invalidate(); jobCanvas?.Invalidate();
         }
         catch (System.OperationCanceledException) { if (!IsDestroyed) artwork.Text = "已取消生成，可调整参数后重试"; }
+        catch { if (!IsDestroyed) artwork.Text = "生成失败，请调整参数后重试"; throw; }
         finally { converting = false; }
     }
     private ImageProcessingOptions ProcessingOptions()

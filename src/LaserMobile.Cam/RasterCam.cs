@@ -17,7 +17,7 @@ public static class RasterCam
         var values = LaserGrblImageMath.Tone(luminance, settings.Gamma, settings.Invert, token);
         if (settings.Mode is not (RasterMode.Grayscale or RasterMode.Threshold)) Diffusion.Apply(values, width, height, settings.Mode, token);
         var result = new StringBuilder("G21 G90 G54 G17 G94\nM5\n");
-        double pitch = settings.WidthMillimeters / width;
+        double pitch = settings.WidthMillimeters / width; bool anyBurn = false;
         for (int row = 0; row < height; row++)
         {
             token.ThrowIfCancellationRequested();
@@ -33,6 +33,7 @@ public static class RasterCam
                 if (current == previous) continue;
                 if (previous > 0)
                 {
+                    anyBurn = true;
                     double x0 = (reverse ? width - start : start) * pitch, x1 = (reverse ? width - col : col) * pitch;
                     if (!positioned)
                     {
@@ -44,6 +45,7 @@ public static class RasterCam
                 previous = current; start = col;
             }
         }
+        if (!anyBurn) throw new FormatException("图像处理后没有雕刻内容，请调整阈值或反色");
         result.AppendLine("M5");
         return GcodeProgram.Prepare(result.ToString(), limits);
     }

@@ -85,8 +85,7 @@ public sealed class ImageProcessingTests
     [Fact] public void ExperimentalContoursDetectStructureThatDirectThresholdWouldDiscard()
     {
         var pixels = LowContrast(); var settings = Settings with { Mode = RasterMode.Threshold, WidthMillimeters = 20 };
-        var raster = RasterCam.Generate(pixels, 80, 80, settings, Limits);
-        Assert.False(raster.EmitsLaser);
+        Assert.Throws<FormatException>(() => RasterCam.Generate(pixels, 80, 80, settings, Limits));
         var contours = ExperimentalContours.Generate(pixels, 80, 80, 20, 20, settings, new(), Limits);
         Assert.True(contours.EmitsLaser); Assert.Contains(contours.Segments, s => s.Power > 0 && Math.Abs(s.Y2 - s.Y1) > 1);
         Assert.Equal("M5", contours.Plan.Lines[^1]);
@@ -111,8 +110,8 @@ public sealed class ImageProcessingTests
         var contour = ArtworkImporter.ConvertDetailed(bytes, "drawing.png", Settings, Limits, false, default, options: new(100, 80, 20, 20), contours: new());
         Assert.Equal(20, contour.Image.WidthMillimeters); Assert.Equal(10, contour.Image.HeightMillimeters); Assert.Equal(100, contour.Image.WidthPixels); Assert.Equal(50, contour.Image.HeightPixels);
         Assert.True(contour.Analysis.EmitsLaser);
-        var raster = ArtworkImporter.ConvertDetailed(bytes, "drawing.png", Settings with { Mode = RasterMode.Threshold }, Limits, false, default, options: new(100, 80, 20, 20));
-        Assert.False(raster.Analysis.EmitsLaser); Assert.NotEqual(raster.Analysis.Plan.Sha256, contour.Analysis.Plan.Sha256);
+        var raster = ArtworkImporter.ConvertDetailed(bytes, "drawing.png", Settings with { Mode = RasterMode.Grayscale }, Limits, false, default, options: new(100, 80, 20, 20));
+        Assert.True(raster.Analysis.EmitsLaser); Assert.NotEqual(raster.Analysis.Plan.Sha256, contour.Analysis.Plan.Sha256);
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
         Assert.Throws<OperationCanceledException>(() => ExperimentalContours.Generate(LowContrast(), 80, 80, 20, 20, Settings, new(), Limits, cancelled.Token));
     }

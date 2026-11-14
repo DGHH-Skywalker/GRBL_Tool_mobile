@@ -23,7 +23,7 @@ public sealed class LaserGrblAlgorithmTests
     [Fact] public void ConfigurableThresholdChangesTheActualProgram()
     {
         byte[] pixels = [150, 150, 150, 150];
-        Assert.False(RasterCam.Generate(pixels, 2, 2, Settings with { Mode = RasterMode.Threshold, Threshold = 128 }, Limits).EmitsLaser);
+        Assert.Throws<FormatException>(() => RasterCam.Generate(pixels, 2, 2, Settings with { Mode = RasterMode.Threshold, Threshold = 128 }, Limits));
         Assert.True(RasterCam.Generate(pixels, 2, 2, Settings with { Mode = RasterMode.Threshold, Threshold = 180 }, Limits).EmitsLaser);
     }
     [Fact] public void FloydUsesTheDesktopDiffusionKernelIncludingTheFirstRow()
