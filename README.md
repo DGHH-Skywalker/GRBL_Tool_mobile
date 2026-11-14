@@ -4,7 +4,7 @@ C# / .NET for Android 原生激光雕刻控制工具。支持 USB OTG 连接 GRB
 
 ## 0.5 图像处理与统一交互
 
-[APK 镜像直链](https://gh-proxy.com/https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/releases/download/v0.5.0-demo/GRBL-Tool-Mobile-0.5.0.apk) · [下载与校验说明](docs/DOWNLOADS.md) · [87 项测试与 Android 交互验收](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43529454785)
+[APK 镜像直链](https://gh-proxy.com/https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/releases/download/v0.5.0-demo/GRBL-Tool-Mobile-0.5.0.apk) · [下载与校验说明](docs/DOWNLOADS.md) · [88 项测试与 Android 交互验收](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43530400589)
 
 从上面的 APK 镜像直链下载并安装。Android 10 及以上、ARM64 或 x86_64，打开设备页点击“体验完整演示”。[完整体验与安装说明](docs/DEMO.md)。
 
