@@ -189,7 +189,7 @@ public sealed partial class MainActivity : Activity
         var value = new ImageProcessingOptions((int)w, (int)h, Value(imageMaxWidth), Value(imageMaxHeight)); value.Validate(); return value;
     }
     private static bool IsArtwork(string name) => ImportFormats.ForName(name).Kind is ImportKind.Bitmap or ImportKind.Svg;
-    private string Description() => prepared is null ? "尚未生成" : $"{jobName}\n{prepared.Plan.Lines.Count} 行 · {(imagePreparation?.WidthMillimeters ?? prepared.MaxX):0.##} × {(imagePreparation?.HeightMillimeters ?? prepared.MaxY):0.##} mm · {TimeSpan.FromSeconds(prepared.EstimatedSeconds):hh\\:mm\\:ss}" + (imagePreparation is null ? "" : (imagePreparation.WidthPixels > 0 ? $"\n处理 {imagePreparation.WidthPixels}×{imagePreparation.HeightPixels} px · {AlgorithmNames[(int)generationMode]}" : "\nSVG 矢量路径"));
+    private string Description() => prepared is null ? "尚未生成" : $"{jobName}\n{prepared.Plan.Lines.Count} 行 · {(imagePreparation?.WidthMillimeters ?? prepared.MaxX):0.##} × {(imagePreparation?.HeightMillimeters ?? prepared.MaxY):0.##} mm · {TimeSpan.FromSeconds(prepared.EstimatedSeconds):hh\\:mm\\:ss}" + (imagePreparation is null ? "" : (imagePreparation.WidthPixels > 0 ? $"\n处理 {imagePreparation.WidthPixels}×{imagePreparation.HeightPixels} px · {(imagePreparation.ProcessingMethod is { } method ? "OpenCV " + method : AlgorithmNames[(int)generationMode])}" : "\nSVG 矢量路径"));
     private async Task StartSelected(bool frame)
     {
         if (selected is null || !draft.IsCurrent) throw new InvalidOperationException("请按当前参数重新生成任务");

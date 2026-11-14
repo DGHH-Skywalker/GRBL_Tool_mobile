@@ -93,6 +93,14 @@ public sealed class OpenCvContourTests
         Assert.True(expected.Count(p => mask.Pixels[p] != 0) >= expected.Count * .95);
         Assert.True(mask.Pixels.Count(p => p != 0) < expected.Count * 2);
     }
+    [Fact] public void GraphicModeRetainsSinglePixelModulesRegardlessOfPhotoNoiseSetting()
+    {
+        const int width = 32; var gray = Enumerable.Repeat((byte)255, width * width).ToArray();
+        foreach (int p in new[] { 4 * width + 4, 9 * width + 11, 18 * width + 22, 26 * width + 6 }) gray[p] = 0;
+        var program = OpenCvContours.Generate(gray, width, width, 20, 20, Settings, new(MinimumLengthPixels: 1000, Profile: ContourProfile.Graphic), Limits);
+        using var restored = Render(program, width, width, 20, 20, true);
+        Assert.Equal(gray, Gray(restored));
+    }
     [Fact] public void ExactRegionUnionKeepsHolesAndSmallRightAngleSteps()
     {
         const int width = 20; var mask = new byte[width * width];

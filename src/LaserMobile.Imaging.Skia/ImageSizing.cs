@@ -19,7 +19,7 @@ public sealed record ContourSettings(double Sensitivity = 5, double MinimumLengt
             throw new ArgumentException("轮廓灵敏度需为 1–10，最短长度需为 2–1000 像素");
     }
 }
-public sealed record ImagePreparation(int WidthPixels, int HeightPixels, double WidthMillimeters, double HeightMillimeters);
+public sealed record ImagePreparation(int WidthPixels, int HeightPixels, double WidthMillimeters, double HeightMillimeters, string? ProcessingMethod = null);
 public static class ImageSizing
 {
     public const long MaximumSourcePixels = 48_000_000;

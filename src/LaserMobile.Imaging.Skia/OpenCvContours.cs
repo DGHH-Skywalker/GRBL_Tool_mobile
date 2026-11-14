@@ -13,6 +13,7 @@ public sealed record ContourMask(byte[] Pixels, ContourProfile Profile);
 /// <summary>Native OpenCV detail extraction, with exact integer-cell polygonization for graphics.</summary>
 public static class OpenCvContours
 {
+    private static readonly Lazy<bool> Runtime = new(() => { Cv2.SetNumThreads(2); return true; });
     public static ContourProfile SelectProfile(byte[] tones, ContourProfile requested)
     {
         if (requested != ContourProfile.Automatic) return requested;
@@ -25,6 +26,7 @@ public static class OpenCvContours
     {
         options.Validate(); token.ThrowIfCancellationRequested();
         if (width < 3 || height < 3 || (long)width * height > ImageSizing.SampleBudget || gray.Length != width * height) throw new ArgumentException("轮廓图像尺寸无效");
+        _ = Runtime.Value;
         var tones = LaserGrblImageMath.Tone(gray, settings.Gamma, settings.Invert, token);
         var profile = SelectProfile(tones, options.Profile);
         using var input = new Mat(height, width, MatType.CV_8UC1); Marshal.Copy(tones, 0, input.Data, tones.Length);

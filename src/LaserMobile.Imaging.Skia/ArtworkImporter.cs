@@ -100,7 +100,8 @@ public static class ArtworkImporter
         var effective = settings with { WidthMillimeters = physicalWidth, HeightMillimeters = physicalHeight };
         var analysis = contours is null ? RasterCam.Generate(luminance, bitmap.Width, bitmap.Height, effective, limits, token)
             : OpenCvContours.Generate(luminance, bitmap.Width, bitmap.Height, physicalWidth, physicalHeight, effective, contours, limits, token);
-        return new(analysis, new(bitmap.Width, bitmap.Height, physicalWidth, physicalHeight));
+        string? method = contours is null ? null : OpenCvContours.Name(OpenCvContours.SelectProfile(LaserGrblImageMath.Tone(luminance, settings.Gamma, settings.Invert, token), contours.Profile));
+        return new(analysis, new(bitmap.Width, bitmap.Height, physicalWidth, physicalHeight, method));
     }
     public static XDocument ValidateSvg(byte[] bytes)
     {
