@@ -277,10 +277,7 @@ try:
     screenshot("10-compact-keyboard")
     adb("shell", "input", "keyevent", "4")
     no_scroll()
-    no_scroll()
     tap("图像调整")
-    no_scroll()
-    no_scroll()
     no_scroll()
     for label in ("裁剪左", "裁剪上", "裁剪右", "裁剪下", "旋转 90°", "还原调整"):
         assert find(label) is not None, label

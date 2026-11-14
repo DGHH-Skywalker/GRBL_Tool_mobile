@@ -18,7 +18,8 @@
         "byte-buffer input replaces System.Drawing/unsafe bitmap access",
         "static state converted to per-conversion instance state",
         "cancellation and bounded path budgets",
-        "original tracing, polygon fitting, smoothing and curve optimization retained"
+        "original tracing, polygon fitting, smoothing and curve optimization retained",
+        "legacy privcurve type renamed PrivateCurve for the modern compiler"
       ]
     },
     {

@@ -234,11 +234,11 @@ namespace LaserMobile.Imaging.Skia.Upstream
 			public int[] po;
 			public int[] lon = null;
 			public List<Potrace.Sum> sums = new List<Potrace.Sum>();
-			public privcurve curve = null;
+			public PrivateCurve curve = null;
 
 		}
 
-		class privcurve
+		class PrivateCurve
 		{
 
 			public int n;                   /* number of segments */
@@ -253,7 +253,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 			public double[] alpha0;          /* "uncropped" alpha parameter - for debug output only */
 			public double[] beta;
 			public int alphacurve = 0;
-			public privcurve(int Count)
+			public PrivateCurve(int Count)
 			{
 				n = Count;
 				tag = new int[n];
@@ -1112,7 +1112,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 
 			dPoint s = new dPoint();
 			double d;
-			path.curve = new privcurve(m);
+			path.curve = new PrivateCurve(m);
 			/* calculate "optimal" point-slope representation for each line
 					segment */
 			for (i = 0; i < m; i++)
@@ -1310,7 +1310,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 		/* Stage 4: smoothing and corner analysis (Sec. 2.3.3) */
 		void reverse(Path path)
 		{
-			privcurve curve = path.curve;
+			PrivateCurve curve = path.curve;
 			int m = curve.n;
 			dPoint[] v = curve.vertex;
 			int i, j;
@@ -1329,7 +1329,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 		void smooth(Path path)
 		{
 			int m = path.curve.n;
-			privcurve curve = path.curve;
+			PrivateCurve curve = path.curve;
 			if (path.sign == "-")
 				reverse(path);
 			int i, j, k;
@@ -1406,7 +1406,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 			 int[] convc, double[] areac)
 		{
 			int m = path.curve.n;
-			privcurve curve = path.curve;
+			PrivateCurve curve = path.curve;
 			dPoint[] vertex = curve.vertex;
 			int k, k1, k2, conv, i1;
 			double area, alpha, d, d1, d2;
@@ -1570,7 +1570,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 	   on failure. */
 		void optiCurve(Path path)
 		{
-			privcurve curve = path.curve;
+			PrivateCurve curve = path.curve;
 			int m = curve.n;
 			dPoint[] vert = curve.vertex;
 			int[] pt = new int[m + 1];
@@ -1582,7 +1582,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 			dPoint p0;
 			int i1;
 			double area, alpha;
-			privcurve ocurve;
+			PrivateCurve ocurve;
 			int[] convc = new int[m];  /* conv[m]: pre-computed convexities */
 			double[] areac = new double[m + 1];
 			/* pre-calculate convexity: +1 = right turn, -1 = left turn, 0 = corner */
@@ -1651,7 +1651,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 				}
 			}
 			om = len[m];
-			ocurve = new privcurve(om);
+			ocurve = new PrivateCurve(om);
 			double[] s = new double[om];
 			double[] t = new double[om];
 
@@ -1817,7 +1817,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 		{
 			return string.Format(System.Globalization.CultureInfo.GetCultureInfo("en-US"), "{0:0.000}", value);
 		}
-		string segment(privcurve curve, int i, double size)
+		string segment(PrivateCurve curve, int i, double size)
 		{
 			string s = "\nL " + toString(curve.c[i * 3 + 1].X * size) + ' ' +
 			   toString(curve.c[i * 3 + 1].Y * size) + ' ';
@@ -1825,7 +1825,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 			   toString(curve.c[i * 3 + 2].Y * size) + ' ';
 			return s;
 		}
-		string bezier(privcurve curve, int i, double size)
+		string bezier(PrivateCurve curve, int i, double size)
 		{
 			string b = "\nC " + toString(curve.c[i * 3 + 0].X * size) + ' ' +
 			  toString(curve.c[i * 3 + 0].Y * size) + ' ';
@@ -1835,7 +1835,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 			   toString(curve.c[i * 3 + 2].Y * size) + ' ';
 			return b;
 		}
-		string path(privcurve curve, double size)
+		string path(PrivateCurve curve, double size)
 		{
 
 
@@ -1863,7 +1863,7 @@ namespace LaserMobile.Imaging.Skia.Upstream
 			int w = (int)(bm.w * size);
 			int h = (int)(bm.h * size);
 			int len = pathlist.Count;
-			privcurve c;
+			PrivateCurve c;
 			int i;
 			string strokec, fillc, fillrule;
 
