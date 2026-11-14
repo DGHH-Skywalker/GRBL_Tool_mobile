@@ -1,6 +1,6 @@
 # Third-party notices
 
-Project source: GPL-3.0-or-later. The grayscale diffusion adaptation is derived from Cyotek MIT source distributed in LaserGRBL; see third-party/manifest.json for exact paths and modifications.
+Project source: GPL-3.0-or-later. The mobile CAM adapters derive from LaserGRBL GPL-3.0-or-later source; the imported CsPotrace core is GPL-2.0-or-later (distributed under the GPLv3 option) and Cyotek diffusion classes are MIT; see third-party/manifest.json for exact paths and modifications.
 
 | Dependency | License | Source |
 |---|---|---|
@@ -10,7 +10,9 @@ Project source: GPL-3.0-or-later. The grayscale diffusion adaptation is derived 
 | SQLitePCLRaw | Apache-2.0 and bundled SQLite notices | https://github.com/ericsink/SQLitePCL.raw |
 | Svg.Skia | MIT | https://github.com/wieslawsoltes/Svg.Skia |
 | Clipper2 | BSL-1.0 | https://github.com/AngusJohnson/Clipper2 |
-| Cyotek diffusion adaptation | MIT | third-party/notices/cyotek-MIT.txt |
+| LaserGRBL image/CAM adapters | GPL-3.0-or-later | third-party/notices/LaserGRBL-LICENSE.md |
+| CsPotrace core | GPL-2.0-or-later | Original copyright/license header retained in source; GPLv3 option used |
+| Cyotek diffusion classes | MIT | third-party/notices/cyotek-MIT.txt |
 | xUnit | Apache-2.0 | https://github.com/xunit/xunit |
 | Microsoft.NET.Test.Sdk | MIT | https://github.com/microsoft/vstest |
 

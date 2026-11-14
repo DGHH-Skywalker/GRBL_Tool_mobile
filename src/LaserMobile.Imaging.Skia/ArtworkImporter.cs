@@ -93,13 +93,13 @@ public static class ArtworkImporter
             token.ThrowIfCancellationRequested();
             for (int x = 0; x < bitmap.Width; x++)
             {
-                var p = bitmap.GetPixel(x, bitmap.Height - y - 1); double light = p.Red * .2126 + p.Green * .7152 + p.Blue * .0722;
-                luminance[y * bitmap.Width + x] = (byte)Math.Round((light * p.Alpha + 255 * (255 - p.Alpha)) / 255);
+                var p = bitmap.GetPixel(x, bitmap.Height - y - 1);
+                luminance[y * bitmap.Width + x] = LaserGrblImageMath.OpticalGray(p.Red, p.Green, p.Blue, p.Alpha);
             }
         }
         var effective = settings with { WidthMillimeters = physicalWidth, HeightMillimeters = physicalHeight };
         var analysis = contours is null ? RasterCam.Generate(luminance, bitmap.Width, bitmap.Height, effective, limits, token)
-            : ExperimentalContours.Generate(luminance, bitmap.Width, bitmap.Height, physicalWidth, physicalHeight, effective, contours, limits, token);
+            : LaserGrblContours.Generate(luminance, bitmap.Width, bitmap.Height, physicalWidth, physicalHeight, effective, contours, limits, token);
         return new(analysis, new(bitmap.Width, bitmap.Height, physicalWidth, physicalHeight));
     }
     public static XDocument ValidateSvg(byte[] bytes)

@@ -54,28 +54,19 @@ public sealed partial class MainActivity
     }
     private void Choices(string title, IReadOnlyList<string> options, Func<int, Task> choose, int selected = -1)
     {
-        int page = 0; const int size = 5;
         var screen = OpenPanel(title); var list = new LinearLayout(this) { Orientation = Orientation.Vertical }; screen.AddView(list, new LinearLayout.LayoutParams(-1, 0, 1));
-        var footer = Row(screen);
-        Button? previous = null, next = null;
-        void Render()
+        if (options.Count > 16) throw new InvalidOperationException("选择项过多，请缩小设备范围");
+        int columns = options.Count > 6 ? 2 : 1;
+        LinearLayout row = list;
+        for (int i = 0; i < options.Count; i++)
         {
-            list.RemoveAllViews();
-            for (int i = page * size; i < Math.Min(options.Count, (page + 1) * size); i++)
-            {
-                int index = i; var choice = Button(list, (index == selected ? "✓ " : "") + options[i], async () => { ClosePanel(); await choose(index); });
-                choice.ContentDescription = options[i]; StyleButton(choice, index == selected);
-            }
-            if (previous is not null) previous.Visibility = page == 0 ? ViewStates.Invisible : ViewStates.Visible;
-            if (next is not null) next.Visibility = (page + 1) * size >= options.Count ? ViewStates.Invisible : ViewStates.Visible;
+            if (columns > 1 && i % columns == 0) row = Row(list);
+            int index = i; var choice = Button(row, (index == selected ? "✓ " : "") + options[i], async () => { ClosePanel(); await choose(index); });
+            choice.ContentDescription = options[i]; choice.TextSize = columns > 1 ? 11 : 13; StyleButton(choice, index == selected);
         }
-        if (options.Count > size)
-        {
-            previous = Button(footer, "上一页", () => { page--; Render(); return Task.CompletedTask; });
-            next = Button(footer, "下一页", () => { page++; Render(); return Task.CompletedTask; });
-        }
-        Button(screen, "返回", () => { ClosePanel(); return Task.CompletedTask; }); Render();
+        Button(screen, "返回", () => { ClosePanel(); return Task.CompletedTask; });
     }
+
     private void ShowPagedText(string title, string message)
     {
         if (IsDestroyed) return;

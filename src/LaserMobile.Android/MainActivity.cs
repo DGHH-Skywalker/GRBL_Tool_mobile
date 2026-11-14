@@ -38,9 +38,9 @@ public sealed partial class MainActivity : Activity
     private CheckBox invert = null!, confirmed = null!;
     private Button ports = null!, algorithmButton = null!;
     private int selectedPort = -1;
-    private enum GenerationMode { Grayscale, ExperimentalContours, Threshold, FloydSteinberg, SvgOutline }
+    private enum GenerationMode { Grayscale, ExperimentalContours, Threshold, FloydSteinberg, SvgOutline, Atkinson, Burkes, Jarvis, Stucki, Sierra2, Sierra3, SierraLite }
     private GenerationMode generationMode;
-    private static readonly string[] AlgorithmNames = ["灰度光栅", "实验：轮廓提取", "黑白阈值", "Floyd–Steinberg 抖动", "SVG 路径轮廓"];
+    private static readonly string[] AlgorithmNames = ["灰度 · LaserGRBL", "轮廓 · LaserGRBL", "黑白阈值", "Floyd–Steinberg", "SVG 路径轮廓", "Atkinson", "Burkes", "Jarvis", "Stucki", "Sierra 2", "Sierra 3", "Sierra Lite"];
     private EditText imageMaxWidth = null!, imageMaxHeight = null!, pixelMaxWidth = null!, pixelMaxHeight = null!, contourSensitivity = null!, contourMinimum = null!;
     private ImagePreparation? imagePreparation;
     private readonly List<(UsbSerialPort Port, string Label)> devices = [];
@@ -149,10 +149,18 @@ public sealed partial class MainActivity : Activity
         if (source is null || converting) return;
         var data = source; var name = sourceName; var limits = Limits(); var revision = draft.Revision;
         bool image = IsArtwork(name);
-        var settings = image ? new RasterSettings(Value(artWidth), Value(spacing), Value(feed), Value(power), Value(gamma), invert.Checked, true, generationMode == GenerationMode.FloydSteinberg ? RasterMode.FloydSteinberg : generationMode == GenerationMode.Threshold ? RasterMode.Threshold : RasterMode.Grayscale) : new RasterSettings(1, .1, 1, 1);
+        var rasterMode = generationMode switch
+        {
+            GenerationMode.Threshold => RasterMode.Threshold, GenerationMode.FloydSteinberg => RasterMode.FloydSteinberg,
+            GenerationMode.Atkinson => RasterMode.Atkinson, GenerationMode.Burkes => RasterMode.Burkes,
+            GenerationMode.Jarvis => RasterMode.Jarvis, GenerationMode.Stucki => RasterMode.Stucki,
+            GenerationMode.Sierra2 => RasterMode.Sierra2, GenerationMode.Sierra3 => RasterMode.Sierra3,
+            GenerationMode.SierraLite => RasterMode.SierraLite, _ => RasterMode.Grayscale
+        };
+        var settings = image ? new RasterSettings(Value(artWidth), Value(spacing), Value(feed), Value(power), Value(gamma), invert.Checked, true, rasterMode, Threshold: ThresholdValue()) : new RasterSettings(1, .1, 1, 1);
         bool vector = generationMode == GenerationMode.SvgOutline;
         var options = image ? ProcessingOptions() : null;
-        var contour = image && generationMode == GenerationMode.ExperimentalContours ? new ContourSettings(Value(contourSensitivity), Value(contourMinimum)) : null;
+        var contour = image && generationMode == GenerationMode.ExperimentalContours ? new ContourSettings(Value(contourSensitivity), Value(contourMinimum), AdaptiveThreshold: automaticThreshold.Checked) : null;
         var edits = image ? new ImageEdits(Value(cropLeft), Value(cropTop), Value(cropRight), Value(cropBottom), quarterTurns) : new ImageEdits();
         converting = true; conversion?.Dispose(); conversion = new CancellationTokenSource();
         try
@@ -162,7 +170,7 @@ public sealed partial class MainActivity : Activity
             var result = converted?.Analysis ?? await Task.Run(() => GcodeProgram.Prepare(Encoding.ASCII.GetString(data), limits), conversion.Token);
             conversion.Token.ThrowIfCancellationRequested();
             if (revision != draft.Revision) throw new InvalidOperationException("输入已更新，请重新生成任务");
-            string parameters = image ? $"宽 {settings.WidthMillimeters:0.##} mm · 行距 {settings.LineSpacing:0.###} mm · F{settings.Feed:0.##} · S{settings.Power:0.##} · Gamma {settings.Gamma:0.##} · {AlgorithmNames[(int)generationMode]} · 反色 {settings.Invert} · 旋转 {quarterTurns * 90}° · 裁剪 {edits}" : "G-code 指令参数以保存文件为准";
+            string parameters = image ? $"宽 {settings.WidthMillimeters:0.##} mm · 行距 {settings.LineSpacing:0.###} mm · F{settings.Feed:0.##} · S{settings.Power:0.##} · Gamma {settings.Gamma:0.##} · {AlgorithmNames[(int)generationMode]} · 反色 {settings.Invert} · 阈值 {settings.Threshold} · 旋转 {quarterTurns * 90}° · 裁剪 {edits}" : "G-code 指令参数以保存文件为准";
             if (converted is not null) parameters += FormattableString.Invariant($" · 实际 {converted.Image.WidthMillimeters:0.###}×{converted.Image.HeightMillimeters:0.###} mm · {converted.Image.WidthPixels}×{converted.Image.HeightPixels} px · 上限 {options} · 轮廓 {contour}");
             var job = await Task.Run(() => library.Commit(name, result.Plan, limits, parameters));
             if (conversion.IsCancellationRequested || IsDestroyed) { library.Delete(job.Id); return; }
@@ -179,7 +187,7 @@ public sealed partial class MainActivity : Activity
         var value = new ImageProcessingOptions((int)w, (int)h, Value(imageMaxWidth), Value(imageMaxHeight)); value.Validate(); return value;
     }
     private static bool IsArtwork(string name) => ImportFormats.ForName(name).Kind is ImportKind.Bitmap or ImportKind.Svg;
-    private string Description() => prepared is null ? "尚未生成" : $"{jobName}\n{prepared.Plan.Lines.Count} 行 · {(imagePreparation?.WidthMillimeters ?? prepared.MaxX):0.##} × {(imagePreparation?.HeightMillimeters ?? prepared.MaxY):0.##} mm · {TimeSpan.FromSeconds(prepared.EstimatedSeconds):hh\\:mm\\:ss}" + (imagePreparation is null ? "" : $"\n处理 {imagePreparation.WidthPixels}×{imagePreparation.HeightPixels} px · {AlgorithmNames[(int)generationMode]}");
+    private string Description() => prepared is null ? "尚未生成" : $"{jobName}\n{prepared.Plan.Lines.Count} 行 · {(imagePreparation?.WidthMillimeters ?? prepared.MaxX):0.##} × {(imagePreparation?.HeightMillimeters ?? prepared.MaxY):0.##} mm · {TimeSpan.FromSeconds(prepared.EstimatedSeconds):hh\\:mm\\:ss}" + (imagePreparation is null ? "" : (imagePreparation.WidthPixels > 0 ? $"\n处理 {imagePreparation.WidthPixels}×{imagePreparation.HeightPixels} px · {AlgorithmNames[(int)generationMode]}" : "\nSVG 矢量路径"));
     private async Task StartSelected(bool frame)
     {
         if (selected is null || !draft.IsCurrent) throw new InvalidOperationException("请按当前参数重新生成任务");
@@ -205,13 +213,13 @@ public sealed partial class MainActivity : Activity
         c.Translate(20 + panX, e.Info.Height - 20 + panY); c.Scale(scale, -scale); c.Translate((float)-prepared.MinX, (float)-prepared.MinY);
         var viewport = new SKRect((float)prepared.MinX + (-20 - panX) / scale, (float)prepared.MinY + (-20 + panY) / scale,
             (float)prepared.MinX + (e.Info.Width - 20 - panX) / scale, (float)prepared.MinY + (e.Info.Height - 20 + panY) / scale);
-        preview?.Draw(c, viewport, scale);
+        preview?.Draw(c, viewport, scale, showTravel.Checked);
     }
     protected override void OnResume() { base.OnResume(); visible = true; Refresh(); }
     protected override void OnPause()
     {
         visible = false; handler.RemoveCallbacksAndMessages(null);
-        using var edit = preferences.Edit(); foreach (var input in savedInputs) edit!.PutString(input.Tag?.ToString() ?? "", input.Text); edit!.PutInt("generationMode", (int)generationMode); edit.PutString("selectedJob", draft.IsCurrent ? selected?.Id.ToString() ?? "" : ""); edit.Apply(); base.OnPause();
+        using var edit = preferences.Edit(); foreach (var input in savedInputs) edit!.PutString(input.Tag?.ToString() ?? "", input.Text); edit!.PutInt("generationMode", (int)generationMode); edit.PutBoolean("showTravel", showTravel.Checked); edit.PutBoolean("automaticThreshold", automaticThreshold.Checked); edit.PutBoolean("invert", invert.Checked); edit.PutString("selectedJob", draft.IsCurrent ? selected?.Id.ToString() ?? "" : ""); edit.Apply(); base.OnPause();
     }
     protected override void OnDestroy() { ClosePanel(); conversion?.Cancel(); preview?.Dispose(); foreach (var icon in navigationIcons) icon?.Dispose(); base.OnDestroy(); }
     private static void SetLabel(TextView view, string text) { if (view.Text != text) view.Text = text; }

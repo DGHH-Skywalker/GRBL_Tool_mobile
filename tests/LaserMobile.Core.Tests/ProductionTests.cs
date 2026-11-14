@@ -42,7 +42,7 @@ public sealed class ProductionTests
     [Fact] public void RasterWhiteIsOffBlackIsPowered()
     {
         var p = RasterCam.Generate([255,0], 2, 1, new(10,.1,300,100), Limits);
-        Assert.Contains(p.Segments, x=> x.Power == 100); Assert.Contains(p.Segments, x=>x.Power==0 && !x.Rapid);
+        Assert.Contains(p.Segments, x=> x.Power == 100); Assert.Contains(p.Segments, x=>x.Power==0 && x.Rapid);
         Assert.Equal("M5",p.Plan.Lines[^1]);
     }
     [Fact] public void BidirectionalRasterUsesRequestedRows()

@@ -93,6 +93,7 @@ public sealed partial class MainActivity
             activity.bottomNavigation.Visibility = keyboard ? ViewStates.Gone : ViewStates.Visible;
             foreach (var bar in activity.secondaryBars) bar.Visibility = keyboard ? ViewStates.Gone : ViewStates.Visible;
             activity.status.SetMaxLines(keyboard ? 1 : 2);
+            activity.UpdateArtworkKeyboard(keyboard);
             return insets;
         }
     }
@@ -115,7 +116,7 @@ public sealed partial class MainActivity
     private CheckBox Check(LinearLayout parent, string title, bool value = false)
     {
         var box = new CheckBox(this) { Text = title, Checked = value, TextSize = 13, ContentDescription = title }; box.SetMinHeight(Dp(48)); box.SetMaxLines(2);
-        box.CheckedChange += (_, _) => { if (!ReferenceEquals(box, confirmed)) InvalidateDraft(); }; parent.AddView(box); return box;
+        box.CheckedChange += (_, _) => { if (!ReferenceEquals(box, confirmed) && !ReferenceEquals(box, showTravel)) InvalidateDraft(); }; parent.AddView(box); return box;
     }
     private Button Button(LinearLayout parent, string text, Func<Task> action)
     {
@@ -213,7 +214,7 @@ public sealed partial class MainActivity
                 Button(form, "模拟断线", () => { Demo().InjectDisconnect(); return Task.CompletedTask; });
                 Button(form, "协议日志", () => { ShowPagedText("协议日志", string.Join('\n', Session().Log)); return Task.CompletedTask; });
                 var exports = Row(form); Button(exports, "导出日志", () => { ExportDocument(22, "grbl-diagnostics.txt"); return Task.CompletedTask; });
-                Button(exports, "关于", () => { ShowPagedText("GRBL Tool Mobile 0.5.0", "GPL-3.0-or-later\nUSBSerialForAndroid / SkiaSharp / Svg.Skia：MIT\nClipper2：Boost-1.0\nCyotek 抖动：MIT\n星光扩展独立维护，硬件资料待确认\n源码 github.com/DGHH-Skywalker/GRBL_Tool_mobile"); return Task.CompletedTask; });
+                Button(exports, "关于", () => { ShowPagedText("GRBL Tool Mobile 0.6.0", "GPL-3.0-or-later\nUSBSerialForAndroid / SkiaSharp / Svg.Skia：MIT\nClipper2：Boost-1.0\nCyotek 抖动：MIT\n星光扩展独立维护，硬件资料待确认\n源码 github.com/DGHH-Skywalker/GRBL_Tool_mobile"); return Task.CompletedTask; });
             }));
     }
     private async Task ArmDevice() { if (await Ask("设备就绪", "确认设备配置、工作原点与工作区域？")) await Session().Arm(true); }
@@ -230,28 +231,10 @@ public sealed partial class MainActivity
         previewHint = new TextView(this) { Text = "路径预览\n导入后生成任务", TextSize = 16, Gravity = GravityFlags.Center }; previewHint.SetTextColor(TextColor); frame.AddView(previewHint, new FrameLayout.LayoutParams(-1, -1));
         canvas.PaintSurface += (_, e) => DrawPreview(e); WirePreviewTouch();
         var row = Row(p); Button(row, "导入作品", ChooseImport); Button(row, "适合屏幕", () => { zoom = 1; panX = panY = 0; canvas.Invalidate(); return Task.CompletedTask; });
+        showTravel = Check(row, "显示空移", preferences.GetBoolean("showTravel", false)); showTravel.TextSize = 11; showTravel.LayoutParameters = new LinearLayout.LayoutParams(0, Dp(48), 1);
+        showTravel.CheckedChange += (_, _) => { canvas.Invalidate(); jobCanvas?.Invalidate(); };
         row = Row(p); generateButton = Button(row, "生成任务", async () => { if (converting) conversion?.Cancel(); else await Prepare(); }); Button(row, "去加工", () => { ShowPage(2); return Task.CompletedTask; });
-        FormPager(parts[1],
-            ("尺寸与精度", form => { artWidth = Number(form, "加工宽度 mm", "30", "artWidth"); spacing = Number(form, "光栅行距 mm", "0.15", "spacing"); }),
-            ("速度与功率", form => { feed = Number(form, "加工进给 mm/min", "600", "feed"); power = Number(form, "加工最大功率 S", "100", "power"); }),
-            ("图像算法", form =>
-            {
-                gamma = Number(form, "Gamma", "1", "gamma");
-                algorithmButton = Button(form, AlgorithmNames[(int)generationMode], () => { Choices("选择生成方式", AlgorithmNames, index => { generationMode = (GenerationMode)index; algorithmButton.Text = AlgorithmNames[index]; InvalidateDraft(); return Task.CompletedTask; }, (int)generationMode); return Task.CompletedTask; }); algorithmButton.ContentDescription = "选择生成方式";
-                invert = Check(form, "反色");
-            }),
-            ("最大加工尺寸 · 等比例缩小", form => { imageMaxWidth = Number(form, "最大图像宽度 mm", "40", "imageMaxWidth"); imageMaxHeight = Number(form, "最大图像高度 mm", "40", "imageMaxHeight"); }),
-            ("最大处理像素 · 等比例缩小", form => { pixelMaxWidth = Number(form, "最大处理宽度 px", "1000", "pixelMaxWidth"); pixelMaxHeight = Number(form, "最大处理高度 px", "1000", "pixelMaxHeight"); Label(form, "总采样预算 100 万像素", 12, 1); }),
-            ("实验性轮廓参数", form => { contourSensitivity = Number(form, "轮廓灵敏度（1–10）", "5", "contourSensitivity"); contourMinimum = Number(form, "最短轮廓长度 px", "8", "contourMinimum"); }));
-        FormPager(parts[2],
-            ("裁剪起点 · 0–1 比例", form => { cropLeft = Number(form, "裁剪左", "0", "cropLeft"); cropTop = Number(form, "裁剪上", "0", "cropTop"); }),
-            ("裁剪终点 · 0–1 比例", form => { cropRight = Number(form, "裁剪右", "1", "cropRight"); cropBottom = Number(form, "裁剪下", "1", "cropBottom"); }),
-            ("旋转与转换", form =>
-            {
-                var rotation = Label(form, "顺时针旋转 0°"); Button(form, "旋转 90°", () => { quarterTurns = (quarterTurns + 1) % 4; rotation.Text = $"顺时针旋转 {quarterTurns * 90}°"; InvalidateDraft(); return Task.CompletedTask; });
-                Button(form, "取消转换", () => { conversion?.Cancel(); return Task.CompletedTask; });
-                Label(form, "图像参数用于位图与 SVG。G-code 沿用文件中的速度与功率。", 12, 3);
-            }));
+        BuildArtworkForms(parts[1], parts[2]);
     }
     private void WirePreviewTouch()
     {

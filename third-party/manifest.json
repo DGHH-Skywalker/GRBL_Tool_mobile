@@ -2,22 +2,86 @@
   "projectLicense": "GPL-3.0-or-later",
   "copiedUpstreamSource": [
     {
-      "component": "grayscale Floyd-Steinberg diffusion adaptation",
+      "component": "desktop CsPotrace core",
       "repository": "https://github.com/arkypita/LaserGRBL",
       "commit": "1f9337b3af27133f8b1696e41cc110f2af74d04f",
       "sourceFiles": [
+        "LaserGRBL/CsPotrace/CsPotrace.cs"
+      ],
+      "license": "GPL-2.0-or-later",
+      "copyright": "Copyright (C) 2001-2016 Peter Selinger; Copyright (C) 2009-2016 Wolfgang Nagl",
+      "upstreamBlob": "04fa19b270d3f3ec088eecca72e2a56d4876d1e9",
+      "localFiles": [
+        "src/LaserMobile.Imaging.Skia/Upstream/CsPotrace.cs"
+      ],
+      "modifications": [
+        "byte-buffer input replaces System.Drawing/unsafe bitmap access",
+        "static state converted to per-conversion instance state",
+        "cancellation and bounded path budgets",
+        "original tracing, polygon fitting, smoothing and curve optimization retained"
+      ]
+    },
+    {
+      "component": "desktop grayscale, threshold, dither loop, power and line-to-line adaptation",
+      "repository": "https://github.com/arkypita/LaserGRBL",
+      "commit": "1f9337b3af27133f8b1696e41cc110f2af74d04f",
+      "sourceFiles": [
+        "LaserGRBL/RasterConverter/ImageTransform.cs",
+        "LaserGRBL/GrblFile.cs"
+      ],
+      "license": "GPL-3.0-or-later",
+      "copyright": "Copyright (c) 2016-2021 Diego Settimi",
+      "localFiles": [
+        "src/LaserMobile.Cam/LaserGrblImageMath.cs",
+        "src/LaserMobile.Cam/Diffusion.cs",
+        "src/LaserMobile.Cam/RasterCam.cs",
+        "src/LaserMobile.Imaging.Skia/LaserGrblContours.cs"
+      ],
+      "modifications": [
+        "replace GDI+ ColorMatrix and bitmap access with byte buffers/Skia",
+        "retain optical grayscale weights, threshold comparison and integer S scaling",
+        "retain equal-power runs and white-travel collapse; explicit M5 and XY G0/G1 output",
+        "retain nearest-neighbour path metric, evaluate distances on demand",
+        "Gamma LUT and Otsu automatic threshold are mobile extensions",
+        "flatten fitted Beziers within physical tolerance, GRBL linear export"
+      ]
+    },
+    {
+      "component": "Cyotek desktop diffusion classes",
+      "repository": "https://github.com/arkypita/LaserGRBL",
+      "commit": "1f9337b3af27133f8b1696e41cc110f2af74d04f",
+      "sourceFiles": [
+        "LaserGRBL/RasterConverter/Dithering/ArgbColor.cs",
+        "LaserGRBL/RasterConverter/Dithering/IErrorDiffusion.cs",
         "LaserGRBL/RasterConverter/Dithering/ErrorDiffusionDithering.cs",
-        "LaserGRBL/RasterConverter/Dithering/FloydSteinbergDithering.cs"
+        "LaserGRBL/RasterConverter/Dithering/FloydSteinbergDithering.cs",
+        "LaserGRBL/RasterConverter/Dithering/AtkinsonDithering.cs",
+        "LaserGRBL/RasterConverter/Dithering/BurkesDithering.cs",
+        "LaserGRBL/RasterConverter/Dithering/JarvisJudiceNinkeDithering.cs",
+        "LaserGRBL/RasterConverter/Dithering/StuckiDithering.cs",
+        "LaserGRBL/RasterConverter/Dithering/Sierra2Dithering.cs",
+        "LaserGRBL/RasterConverter/Dithering/Sierra3Dithering.cs",
+        "LaserGRBL/RasterConverter/Dithering/SierraLiteDithering.cs"
       ],
       "license": "MIT",
       "copyright": "Copyright © 2015 Cyotek Ltd.",
       "localFiles": [
-        "src/LaserMobile.Cam/Diffusion.cs"
+        "src/LaserMobile.Cam/Upstream/ArgbColor.cs",
+        "src/LaserMobile.Cam/Upstream/IErrorDiffusion.cs",
+        "src/LaserMobile.Cam/Upstream/ErrorDiffusionDithering.cs",
+        "src/LaserMobile.Cam/Upstream/FloydSteinbergDithering.cs",
+        "src/LaserMobile.Cam/Upstream/AtkinsonDithering.cs",
+        "src/LaserMobile.Cam/Upstream/BurkesDithering.cs",
+        "src/LaserMobile.Cam/Upstream/JarvisJudiceNinkeDithering.cs",
+        "src/LaserMobile.Cam/Upstream/StuckiDithering.cs",
+        "src/LaserMobile.Cam/Upstream/Sierra2Dithering.cs",
+        "src/LaserMobile.Cam/Upstream/Sierra3Dithering.cs",
+        "src/LaserMobile.Cam/Upstream/SierraLiteDithering.cs"
       ],
       "modifications": [
-        "grayscale byte buffer",
-        "row and column zero boundary fix",
-        "remove System.Drawing"
+        "BOM removal",
+        "base constructor null/empty checks enabled",
+        "offset X/Y boundary changed from >0 to >=0; kernels unchanged"
       ]
     }
   ],

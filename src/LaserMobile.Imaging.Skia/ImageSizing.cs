@@ -11,7 +11,7 @@ public sealed record ImageProcessingOptions(int MaxWidthPixels = 1000, int MaxHe
             throw new ArgumentException("最大处理像素需为 16–4096，加工尺寸上限需为正数");
     }
 }
-public sealed record ContourSettings(double Sensitivity = 5, double MinimumLengthPixels = 8, double SimplificationMillimeters = .04)
+public sealed record ContourSettings(double Sensitivity = 5, double MinimumLengthPixels = 8, double SimplificationMillimeters = .04, bool AdaptiveThreshold = true)
 {
     public void Validate()
     {
