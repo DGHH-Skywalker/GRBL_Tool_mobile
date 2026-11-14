@@ -20,7 +20,7 @@
 | 哈希 | System.Security.Cryptography | SHA256 继续使用框架实现 |
 | 详情排版 | Android StaticLayout / TextView | 替换固定字数、固定七行分页；按真实字体、宽度、高度处理溢出 |
 | 页面动画 | Android ViewPropertyAnimator / RippleDrawable | 替换瞬时切换；160 ms 合成属性动画，遵循系统动画开关 |
-| 历史列表 | 缓存视图 + 后台 .NET Task / 现有 SQLite | 布局事件仅重排缓存，文件校验及数据库查询离开 UI 线程 |
+| 历史列表 | 缓存视图 + 后台 .NET Task / 现有 SQLite | 布局事件合并到布局完成后，仅数据/页码/容量变化时重建卡片；文件校验及数据库查询离开 UI 线程 |
 | GRBL 解析与串行发送 | 项目协议适配层 + .NET 同步原语 | 保留经过测试的受限方言、字符流控、世代、显式屏障与新 Idle 完成语义；上游桌面发送器与 UI 生命周期耦合，协议策略继续由本项目集成验证 |
 | 设备扩展 | 独立契约与 JSON 配置 | 保留星光和通用设备的分离，不从 USB 芯片推断主控型号或运动能力 |
 | 质量回归 | xUnit + ZXing.Net + 原生 Skia/OpenCV | 完整密集二维码还原/解码、真实照片边缘、USB 描述符与控制线顺序、协议和 Android 工作流 |

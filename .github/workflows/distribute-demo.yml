@@ -8,7 +8,7 @@ permissions:
   actions: read
   contents: write
 concurrency:
-  group: distribute-demo-0.6.0
+  group: distribute-demo-0.7.0
   cancel-in-progress: false
 jobs:
   release:
@@ -17,11 +17,11 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      SOURCE_RUN: '43535391773'
-      SOURCE_SHA: 'f7ab16ba56fb6d81689a782266046bc4409c90e6'
-      APK_SHA256: 'a2abf280913f17d67df13d0391fde93299b4eb295934bc11c07fca8fc7fffd0b'
-      RELEASE_TAG: 'v0.6.0-demo'
-      APK_NAME: 'GRBL-Tool-Mobile-0.6.0.apk'
+      SOURCE_RUN: '43551159299'
+      SOURCE_SHA: '9719a5fdde6fb15f43e6a146def8d99c02a6b8c9'
+      APK_SHA256: '6292e3aff42057f08701394da577b1af3d86686781190164b3aa7b79381c7d25'
+      RELEASE_TAG: 'v0.7.0-demo'
+      APK_NAME: 'GRBL-Tool-Mobile-0.7.0.apk'
     steps:
       - name: Verify source workflow succeeded at the audited commit
         shell: bash
@@ -59,15 +59,17 @@ jobs:
             exit 0
           fi
           cat > release-notes.md <<'NOTES'
-          已通过 105 项核心测试及 Android API 35 模拟器完整交互验收的 0.6.0 演示版。
+          已通过 120 项核心测试及 Android API 35 模拟器完整交互验收的 0.7.0 演示版。
 
           安装：Android 10 及以上，ARM64 / x86_64。下载 APK 后安装，在设备页点击“体验完整演示”。
 
-          加工参数和图像调整各自集中一页。直接接入桌面 LaserGRBL CsPotrace、八套 Cyotek 抖动，以及灰度/阈值/白区优化。轮廓预览默认隐藏关光空移，可打开虚线查看。保留毫米/像素上限与等比例缩小。
-          保留 USB 控制、文件导入与预览、暂停/继续、后台完成、任务历史和内置演示。
-          实体控制板与现场加工验收独立进行。
+          OpenCV 照片细节、图文保真和文档局部阈值；Clipper2 保留精细像素边界与孔洞。照片/密集二维码回归和实际 Android 导入生成已验证。
+          设置集中一页；详情、选项及历史按实际空间排版；原生短动画、水波纹和后台历史加载。
+          原始 USB 枚举、VID/PID/接口诊断、自定义兼容驱动映射，以及 DTR/RTS 保持/低/高配置。
+          保留文件白名单、等比例尺寸上限、八套桌面抖动、暂停/继续、后台执行和任务历史。
+          本轮验证使用模拟器与协议/USB 描述符模拟；实体控制板验收单独记录。
 
-          原始已验收安装包，保留其签名与 SHA256；源码版本为 f7ab16ba56fb6d81689a782266046bc4409c90e6。
+          原始已验收安装包，保留其签名与 SHA256；源码版本为 9719a5fdde6fb15f43e6a146def8d99c02a6b8c9。
           源码采用 GPL-3.0-or-later；源码和第三方声明包含在本标签对应的仓库中。
           NOTES
-          gh release create "$RELEASE_TAG" "package/$APK_NAME" package/SHA256SUMS.txt --target "$GITHUB_SHA" --prerelease --title 'GRBL Tool Mobile 0.6.0 Demo' --notes-file release-notes.md
+          gh release create "$RELEASE_TAG" "package/$APK_NAME" package/SHA256SUMS.txt --target "$GITHUB_SHA" --prerelease --title 'GRBL Tool Mobile 0.7.0 Demo' --notes-file release-notes.md
