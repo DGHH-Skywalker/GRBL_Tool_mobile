@@ -9,14 +9,14 @@ public static class UsbCatalog
     public static UsbCatalogEntry[] Enumerate(UsbManager manager, UsbConnectionSettings settings)
     {
         settings.Validate(); var defaults = new UsbSerialProber(UsbSerialProber.DefaultProbeTable);
-        return manager.DeviceList.Values.Select(device =>
+        return manager.DeviceList!.Values.Select(device =>
         {
             var descriptors = new List<UsbInterfaceDescriptor>();
             for (int i = 0; i < device.InterfaceCount; i++)
             {
                 var face = device.GetInterface(i)!; bool input = false, output = false;
                 for (int e = 0; e < face.EndpointCount; e++) { var ep = face.GetEndpoint(e)!; if ((int)ep.Type == 2) { input |= (int)ep.Direction == 128; output |= (int)ep.Direction == 0; } }
-                descriptors.Add(new((int)face.InterfaceClass, face.InterfaceSubclass, face.InterfaceProtocol, input, output));
+                descriptors.Add(new((int)face.InterfaceClass, (int)face.InterfaceSubclass, face.InterfaceProtocol, input, output));
             }
             string match = "未匹配串口驱动"; string driverName = ""; UsbSerialPort[] ports = [];
             try

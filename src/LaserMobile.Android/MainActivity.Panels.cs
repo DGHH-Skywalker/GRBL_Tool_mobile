@@ -86,8 +86,9 @@ public sealed partial class MainActivity
         var screen = OpenPanel(title);
         var text = new TextView(this) { Text = message, TextSize = 14 }; text.SetTextColor(TextColor); text.SetPadding(Dp(4), Dp(4), Dp(4), Dp(4));
         screen.AddView(text, new LinearLayout.LayoutParams(-1, 0, 1));
-        var pager = Row(screen); var previous = Button(pager, "上一页", () => { pageIndex--; Render(); return Task.CompletedTask; });
-        var counter = Label(pager, "", 12, 1); var next = Button(pager, "下一页", () => { pageIndex++; Render(); return Task.CompletedTask; }); pager.Visibility = ViewStates.Gone;
+        Button previous = null!, next = null!; TextView counter = null!;
+        var pager = Row(screen); previous = Button(pager, "上一页", () => { pageIndex--; Render(); return Task.CompletedTask; });
+        counter = Label(pager, "", 12, 1); next = Button(pager, "下一页", () => { pageIndex++; Render(); return Task.CompletedTask; }); pager.Visibility = ViewStates.Gone;
         footer?.Invoke(screen);
         Button(screen, back is null ? "返回" : "返回设备列表", async () => { ClosePanel(); if (back is not null) await back(); });
         void Render()
