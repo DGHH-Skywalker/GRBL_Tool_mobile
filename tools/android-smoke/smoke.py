@@ -216,7 +216,7 @@ try:
     wait("complex.png")
     tap("加工参数")
     assert find("下一步") is None and find("上一步") is None
-    for label in ("加工宽度 mm", "光栅行距 mm", "加工进给 mm/min", "加工最大功率 S", "Gamma", "二值阈值（0–255）", "最大图像宽度 mm", "最大图像高度 mm", "最大处理宽度 px", "最大处理高度 px", "轮廓细节（1–10）", "最短轮廓长度 px"):
+    for label in ("加工宽度 mm", "光栅行距 mm", "加工进给 mm/min", "加工最大功率 S", "Gamma", "二值阈值（0–255）", "最大图像宽度 mm", "最大图像高度 mm", "最大处理宽度 px", "最大处理高度 px", "轮廓细节（1–10）", "照片去噪长度 px"):
         assert find(label) is not None, label
     no_scroll()
     screenshot("07a-all-parameters")

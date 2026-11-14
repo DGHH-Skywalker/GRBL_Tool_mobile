@@ -43,7 +43,7 @@ public sealed partial class MainActivity
         row = CompactRow(parameters);
         pixelMaxWidth = CompactNumber(row, "像素宽 px", "最大处理宽度 px", "1000", "pixelMaxWidth");
         pixelMaxHeight = CompactNumber(row, "像素高 px", "最大处理高度 px", "1000", "pixelMaxHeight");
-        contourMinimum = CompactNumber(row, "最短轮廓 px", "最短轮廓长度 px", "8", "contourMinimum");
+        contourMinimum = CompactNumber(row, "照片去噪 px", "照片去噪长度 px", "8", "contourMinimum");
         row = CompactRow(parameters);
         algorithmButton = Button(row, AlgorithmNames[(int)generationMode], () => { Choices("选择生成方式", AlgorithmNames, index => { generationMode = (GenerationMode)index; algorithmButton.Text = AlgorithmNames[index]; InvalidateDraft(); return Task.CompletedTask; }, (int)generationMode); return Task.CompletedTask; });
         algorithmButton.ContentDescription = "选择生成方式";

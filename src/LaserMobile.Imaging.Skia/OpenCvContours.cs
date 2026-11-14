@@ -101,8 +101,7 @@ public static class OpenCvContours
         foreach (var path in paths)
         {
             token.ThrowIfCancellationRequested();
-            double length = 0; for (int i = 0; i < path.Count; i++) { var a = path[i]; var b = path[(i + 1) % path.Count]; length += Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y); }
-            if (length < options.MinimumLengthPixels || path.Count < 3) continue;
+            if (path.Count < 3) continue; // Region mode preserves every real module, including one-pixel islands.
             if (++count > 12000 || (points += path.Count) > 120000) throw new FormatException("保真轮廓超过任务预算，请裁剪作品或减少噪点");
             code.AppendLine(FormattableString.Invariant($"M5\nG0 X{path[0].X * physicalWidth / width:0.#####} Y{path[0].Y * physicalHeight / height:0.#####}\nM4 S{settings.Power:0.###}"));
             for (int i = 1; i <= path.Count; i++) { var p = path[i % path.Count]; code.AppendLine(FormattableString.Invariant($"G1 X{p.X * physicalWidth / width:0.#####} Y{p.Y * physicalHeight / height:0.#####} F{settings.Feed:0.###}")); }

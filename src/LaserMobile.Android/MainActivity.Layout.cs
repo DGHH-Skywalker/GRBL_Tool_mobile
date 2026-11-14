@@ -304,7 +304,7 @@ public sealed partial class MainActivity
     {
         libraryCards.Post(() =>
         {
-            int a = libraryCards.GetChildAt(0)?.Height ?? 0, b = historyCards.GetChildAt(0)?.Height ?? 0;
+            int a = libraryCards.GetChildAt(0) is LinearLayout libraryCard ? libraryCard.Height : 0, b = historyCards.GetChildAt(0) is LinearLayout historyCard ? historyCard.Height : 0;
             bool changed = a > 0 && libraryCardHeight != a || b > 0 && historyCardHeight != b;
             if (a > 0) libraryCardHeight = a; if (b > 0) historyCardHeight = b;
             if (changed && currentPage == 3 && !PanelVisible) RefreshHistory();
