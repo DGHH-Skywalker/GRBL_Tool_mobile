@@ -12,6 +12,12 @@
           "Microsoft.TestPlatform.TestHost": "17.14.1"
         }
       },
+      "Sdcb.OpenCvSharp4.mini.runtime.linux-x64": {
+        "type": "Direct",
+        "requested": "[4.13.0.45, )",
+        "resolved": "4.13.0.45",
+        "contentHash": "1LLism0UyAVJQEC42J1nf/NdjeS1VZbQ1KdP2i82GNbx9WrEZN8TLfDJW70bPZgs1VEFw6aN7h6CdeGsKLn6GQ=="
+      },
       "SkiaSharp.NativeAssets.Linux.NoDependencies": {
         "type": "Direct",
         "requested": "[3.119.2, )",
@@ -34,6 +40,12 @@
         "requested": "[3.1.5, )",
         "resolved": "3.1.5",
         "contentHash": "tKi7dSTwP4m5m9eXPM2Ime4Kn7xNf4x4zT9sdLO/G4hZVnQCRiMTWoSZqI/pYTVeI27oPPqHBKYI/DjJ9GsYgA=="
+      },
+      "ZXing.Net": {
+        "type": "Direct",
+        "requested": "[0.16.11, )",
+        "resolved": "0.16.11",
+        "contentHash": "OZfAVu88hl87BffQ+rlWCj/vLvAhhCK4QnFaoveeF/MY8SjHNSYBQ3qyUEWlPKNgBQGh1syXhCDg10vUnCsqkg=="
       },
       "ExCSS": {
         "type": "Transitive",
@@ -258,6 +270,7 @@
         "dependencies": {
           "Clipper2": "[2.0.0, )",
           "LaserMobile.Cam": "[1.0.0, )",
+          "OpenCvSharp4": "[4.13.0.20260602, )",
           "SkiaSharp": "[3.119.2, )",
           "Svg.Skia": "[4.9.1, )"
         }
@@ -285,6 +298,12 @@
           "SQLitePCLRaw.bundle_e_sqlite3": "2.1.13",
           "SQLitePCLRaw.core": "2.1.13"
         }
+      },
+      "OpenCvSharp4": {
+        "type": "CentralTransitive",
+        "requested": "[4.13.0.20260602, )",
+        "resolved": "4.13.0.20260602",
+        "contentHash": "NXQBXXWgeVnmGhRWX5KvhGFIagI9ZGeZgip07GgSbRD5uDNembCyqW+9dPwO/ZOweVUkWihrwJYDo8GG413tEQ=="
       },
       "SkiaSharp": {
         "type": "CentralTransitive",

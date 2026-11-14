@@ -8,6 +8,12 @@
         "resolved": "2.0.0",
         "contentHash": "2X23RZxJrjRjOSZc20aqXY9jpmHLekDRy4PIMfrsi2LPNzxFYlnuqzX/nLdk77fbURHUeX+gMhUn2a1z9/wMTQ=="
       },
+      "OpenCvSharp4": {
+        "type": "Direct",
+        "requested": "[4.13.0.20260602, )",
+        "resolved": "4.13.0.20260602",
+        "contentHash": "NXQBXXWgeVnmGhRWX5KvhGFIagI9ZGeZgip07GgSbRD5uDNembCyqW+9dPwO/ZOweVUkWihrwJYDo8GG413tEQ=="
+      },
       "SkiaSharp": {
         "type": "Direct",
         "requested": "[3.119.2, )",

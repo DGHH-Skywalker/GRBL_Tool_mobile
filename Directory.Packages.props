@@ -5,4 +5,7 @@
 <PackageVersion Include="UsbSerialForAndroid" Version="2.0.1" />
 <PackageVersion Include="SkiaSharp.Views" Version="3.119.2" />
 <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.14" />
-<PackageVersion Include="Svg.Skia" Version="4.9.1"/><PackageVersion Include="Clipper2" Version="2.0.0"/><PackageVersion Include="SkiaSharp" Version="3.119.2"/><PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.2"/></ItemGroup></Project>
+<PackageVersion Include="Svg.Skia" Version="4.9.1"/><PackageVersion Include="Clipper2" Version="2.0.0"/><PackageVersion Include="SkiaSharp" Version="3.119.2"/><PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.2"/><PackageVersion Include="OpenCvSharp4" Version="4.13.0.20260602"/>
+<PackageVersion Include="Sdcb.OpenCvSharp4.mini.runtime.linux-x64" Version="4.13.0.45"/>
+<PackageVersion Include="ZXing.Net" Version="0.16.11"/>
+</ItemGroup></Project>

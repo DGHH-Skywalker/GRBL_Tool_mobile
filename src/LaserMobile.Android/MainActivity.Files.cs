@@ -92,7 +92,7 @@ public sealed partial class MainActivity
             {
                 using var stream = ContentResolver!.OpenOutputStream(uri) ?? throw new IOException("无法写入文件");
                 string content = requestCode == 21 ? library.Read(selected?.Id ?? throw new InvalidOperationException("任务未选择")).Content
-                    : "GRBL Tool Mobile 0.6.0\n" + (CurrentSession()?.Snapshot.ToString() ?? "Disconnected") + "\n" + string.Join('\n', CurrentSession()?.Log ?? []);
+                    : "GRBL Tool Mobile 0.7.0\n" + (CurrentSession()?.Snapshot.ToString() ?? "Disconnected") + "\n" + string.Join('\n', CurrentSession()?.Log ?? []);
                 await stream.WriteAsync(Encoding.UTF8.GetBytes(content));
             }
         }

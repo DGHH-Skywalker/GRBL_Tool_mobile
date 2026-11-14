@@ -19,6 +19,7 @@ jobs:
           global-json-file: global.json
       - run: dotnet workload restore GRBL.Tool.Mobile.Core.slnx
       - run: dotnet restore GRBL.Tool.Mobile.Core.slnx --locked-mode
+      - run: python3 tools/contour-fixtures/prepare.py
       - run: dotnet test GRBL.Tool.Mobile.Core.slnx -c Release --no-restore --logger trx --results-directory artifacts/tests
       - run: dotnet run --project tools/LaserMobile.GrblSimulator -c Release --no-restore
       - uses: actions/upload-artifact@v4
@@ -26,7 +27,37 @@ jobs:
         with:
           name: test-results
           path: artifacts/tests
+  opencv-native:
+    timeout-minutes: 35
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: native
+        with:
+          path: artifacts/opencv-native/${{ matrix.abi }}
+          key: opencv-4.13-16k-v1-${{ matrix.abi }}-${{ hashFiles('tools/native-opencv/**') }}
+      - uses: android-actions/setup-android@v3
+        if: steps.native.outputs.cache-hit != 'true'
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - name: Build pinned OpenCV native runtime with 16 KB alignment
+        if: steps.native.outputs.cache-hit != 'true'
+        run: |
+          sdkmanager "ndk;28.2.13676358"
+          bash tools/native-opencv/build.sh "${{ matrix.abi }}" "$ANDROID_HOME/ndk/28.2.13676358"
+      - run: python3 tools/native-opencv/verify.py "artifacts/opencv-native/${{ matrix.abi }}/libOpenCvSharpExtern.so" "${{ matrix.abi }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencv-native-${{ matrix.abi }}
+          path: artifacts/opencv-native
   android:
+    needs: [opencv-native]
     timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
@@ -63,6 +94,11 @@ jobs:
           signing_password="$(cat "$signing_dir/password")"
           echo "::add-mask::$signing_password"
           echo "GRBL_DEMO_SIGNING_PASSWORD=$signing_password" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: opencv-native-*
+          path: artifacts/opencv-native
+          merge-multiple: true
       - name: Build signed Release APK
         run: dotnet build src/LaserMobile.Android -c Release --no-restore -p:AndroidSdkDirectory="$ANDROID_HOME" -p:JavaSdkDirectory="$JAVA_HOME" -p:AndroidKeyStore=true -p:AndroidSigningKeyStore="$HOME/.cache/grbl-demo-signing/demo.keystore" -p:AndroidSigningKeyAlias=grbl-demo -p:AndroidSigningStorePass=env:GRBL_DEMO_SIGNING_PASSWORD -p:AndroidSigningKeyPass=env:GRBL_DEMO_SIGNING_PASSWORD
       - name: Verify APK and write checksums
@@ -71,6 +107,7 @@ jobs:
           mkdir -p artifacts/apk
           find src/LaserMobile.Android/bin/Release -name '*-Signed.apk' -exec cp {} artifacts/apk/ \;
           test -n "$(find artifacts/apk -name '*.apk' -print -quit)"
+          for apk in artifacts/apk/*.apk; do python3 tools/native-opencv/verify.py "$apk"; done
           for apk in artifacts/apk/*.apk; do "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"; done
           cd artifacts/apk
           sha256sum *.apk > SHA256SUMS.txt
@@ -89,6 +126,10 @@ jobs:
         with:
           name: android-apk
           path: artifacts/apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/core
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

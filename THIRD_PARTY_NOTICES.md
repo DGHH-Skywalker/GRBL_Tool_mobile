@@ -13,6 +13,9 @@ Project source: GPL-3.0-or-later. The mobile CAM adapters derive from LaserGRBL 
 | LaserGRBL image/CAM adapters | GPL-3.0-or-later | third-party/notices/LaserGRBL-LICENSE.md |
 | CsPotrace core | GPL-2.0-or-later | Original copyright/license header retained in source; GPLv3 option used |
 | Cyotek diffusion classes | MIT | third-party/notices/cyotek-MIT.txt |
+| OpenCV / OpenCvSharp / Sdcb mini build patch | Apache-2.0 | Pinned source commits in third-party/manifest.json; native build artifacts include LICENSE files |
+| ZXing.Net (tests only) | Apache-2.0 | https://github.com/micjahn/ZXing.Net |
+| NASA astronaut photograph (CI fixture) | Public domain | scikit-image v0.18.3 skimage.data.astronaut documentation; pinned URL and hash in tools/contour-fixtures/prepare.py |
 | xUnit | Apache-2.0 | https://github.com/xunit/xunit |
 | Microsoft.NET.Test.Sdk | MIT | https://github.com/microsoft/vstest |
 

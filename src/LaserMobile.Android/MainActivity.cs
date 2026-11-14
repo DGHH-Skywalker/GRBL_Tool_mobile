@@ -40,7 +40,8 @@ public sealed partial class MainActivity : Activity
     private int selectedPort = -1;
     private enum GenerationMode { Grayscale, ExperimentalContours, Threshold, FloydSteinberg, SvgOutline, Atkinson, Burkes, Jarvis, Stucki, Sierra2, Sierra3, SierraLite }
     private GenerationMode generationMode;
-    private static readonly string[] AlgorithmNames = ["灰度 · LaserGRBL", "轮廓 · LaserGRBL", "黑白阈值", "Floyd–Steinberg", "SVG 路径轮廓", "Atkinson", "Burkes", "Jarvis", "Stucki", "Sierra 2", "Sierra 3", "Sierra Lite"];
+    private ContourProfile contourProfile;
+    private static readonly string[] AlgorithmNames = ["灰度 · LaserGRBL", "轮廓 · OpenCV", "黑白阈值", "Floyd–Steinberg", "SVG 路径轮廓", "Atkinson", "Burkes", "Jarvis", "Stucki", "Sierra 2", "Sierra 3", "Sierra Lite"];
     private EditText imageMaxWidth = null!, imageMaxHeight = null!, pixelMaxWidth = null!, pixelMaxHeight = null!, contourSensitivity = null!, contourMinimum = null!;
     private ImagePreparation? imagePreparation;
     private readonly List<(UsbSerialPort Port, string Label)> devices = [];
@@ -57,7 +58,7 @@ public sealed partial class MainActivity : Activity
     {
         var background = new Android.Graphics.Drawables.StateListDrawable();
         background.AddState([-Android.Resource.Attribute.StateEnabled], Surface(Dark ? "#263140" : "#E8EDF4", 8));
-        background.AddState([], Surface(primary ? "#1762CC" : Dark ? "#253449" : "#EAF1FB", 8)); button.Background = background;
+        background.AddState([], Surface(primary ? "#1762CC" : Dark ? "#253449" : "#EAF1FB", 8)); button.Background = new Android.Graphics.Drawables.RippleDrawable(Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Argb(36, 100, 150, 220)), background, Surface("#FFFFFF", 8));
         button.SetTextColor(new Android.Content.Res.ColorStateList([[-Android.Resource.Attribute.StateEnabled], []],
             [Android.Graphics.Color.ParseColor(Dark ? "#8090A5" : "#8794A7").ToArgb(), Android.Graphics.Color.ParseColor(primary ? "#FFFFFF" : Dark ? "#D9E8FF" : "#234D82").ToArgb()]));
         button.Elevation = 0; button.SetAllCaps(false); button.SetMinHeight(Dp(46)); button.SetPadding(Dp(10), Dp(6), Dp(10), Dp(6));
@@ -160,7 +161,7 @@ public sealed partial class MainActivity : Activity
         var settings = image ? new RasterSettings(Value(artWidth), Value(spacing), Value(feed), Value(power), Value(gamma), invert.Checked, true, rasterMode, Threshold: ThresholdValue()) : new RasterSettings(1, .1, 1, 1);
         bool vector = generationMode == GenerationMode.SvgOutline;
         var options = image ? ProcessingOptions() : null;
-        var contour = image && generationMode == GenerationMode.ExperimentalContours ? new ContourSettings(Value(contourSensitivity), Value(contourMinimum), AdaptiveThreshold: automaticThreshold.Checked) : null;
+        var contour = image && generationMode == GenerationMode.ExperimentalContours ? new ContourSettings(Value(contourSensitivity), Value(contourMinimum), AdaptiveThreshold: automaticThreshold.Checked, Profile: contourProfile) : null;
         var edits = image ? new ImageEdits(Value(cropLeft), Value(cropTop), Value(cropRight), Value(cropBottom), quarterTurns) : new ImageEdits();
         converting = true; conversion?.Dispose(); conversion = new CancellationTokenSource();
         try
@@ -170,8 +171,8 @@ public sealed partial class MainActivity : Activity
             var result = converted?.Analysis ?? await Task.Run(() => GcodeProgram.Prepare(Encoding.ASCII.GetString(data), limits), conversion.Token);
             conversion.Token.ThrowIfCancellationRequested();
             if (revision != draft.Revision) throw new InvalidOperationException("输入已更新，请重新生成任务");
-            string parameters = image ? $"宽 {settings.WidthMillimeters:0.##} mm · 行距 {settings.LineSpacing:0.###} mm · F{settings.Feed:0.##} · S{settings.Power:0.##} · Gamma {settings.Gamma:0.##} · {AlgorithmNames[(int)generationMode]} · 反色 {settings.Invert} · 阈值 {settings.Threshold} · 旋转 {quarterTurns * 90}° · 裁剪 {edits}" : "G-code 指令参数以保存文件为准";
-            if (converted is not null) parameters += FormattableString.Invariant($" · 实际 {converted.Image.WidthMillimeters:0.###}×{converted.Image.HeightMillimeters:0.###} mm · {converted.Image.WidthPixels}×{converted.Image.HeightPixels} px · 上限 {options} · 轮廓 {contour}");
+            string parameters = image ? $"宽 {settings.WidthMillimeters:0.##} mm · 行距 {settings.LineSpacing:0.###} mm · F{settings.Feed:0.##} · S{settings.Power:0.##} · Gamma {settings.Gamma:0.##} · {AlgorithmNames[(int)generationMode]} · 反色 {settings.Invert} · 阈值 {settings.Threshold} · 旋转 {quarterTurns * 90}° · 裁剪 左{edits.Left:0.###}/上{edits.Top:0.###}/右{edits.Right:0.###}/下{edits.Bottom:0.###}" : "G-code 指令参数以保存文件为准";
+            if (converted is not null) parameters += FormattableString.Invariant($" · 实际 {converted.Image.WidthMillimeters:0.###}×{converted.Image.HeightMillimeters:0.###} mm · {converted.Image.WidthPixels}×{converted.Image.HeightPixels} px · 上限 {options!.MaxWidthMillimeters:0.##}×{options.MaxHeightMillimeters:0.##} mm / {options.MaxWidthPixels}×{options.MaxHeightPixels} px");
             var job = await Task.Run(() => library.Commit(name, result.Plan, limits, parameters));
             if (conversion.IsCancellationRequested || IsDestroyed) { library.Delete(job.Id); return; }
             if (!draft.Commit(revision)) { library.Delete(job.Id); throw new InvalidOperationException("输入已更新，请重新生成任务"); }
@@ -220,7 +221,7 @@ public sealed partial class MainActivity : Activity
     protected override void OnPause()
     {
         visible = false; handler.RemoveCallbacksAndMessages(null);
-        using var edit = preferences.Edit(); foreach (var input in savedInputs) edit!.PutString(input.Tag?.ToString() ?? "", input.Text); edit!.PutInt("generationMode", (int)generationMode); edit.PutBoolean("showTravel", showTravel.Checked); edit.PutBoolean("automaticThreshold", automaticThreshold.Checked); edit.PutBoolean("invert", invert.Checked); edit.PutString("selectedJob", draft.IsCurrent ? selected?.Id.ToString() ?? "" : ""); edit.Apply(); base.OnPause();
+        using var edit = preferences.Edit(); foreach (var input in savedInputs) edit!.PutString(input.Tag?.ToString() ?? "", input.Text); edit!.PutInt("generationMode", (int)generationMode); edit.PutInt("contourProfile", (int)contourProfile); edit.PutBoolean("showTravel", showTravel.Checked); edit.PutBoolean("automaticThreshold", automaticThreshold.Checked); edit.PutBoolean("invert", invert.Checked); edit.PutString("selectedJob", draft.IsCurrent ? selected?.Id.ToString() ?? "" : ""); edit.Apply(); base.OnPause();
     }
     protected override void OnDestroy() { ClosePanel(); conversion?.Cancel(); preview?.Dispose(); foreach (var icon in navigationIcons) icon?.Dispose(); base.OnDestroy(); }
     private static void SetLabel(TextView view, string text) { if (view.Text != text) view.Text = text; }

@@ -11,11 +11,11 @@ public sealed record ImageProcessingOptions(int MaxWidthPixels = 1000, int MaxHe
             throw new ArgumentException("最大处理像素需为 16–4096，加工尺寸上限需为正数");
     }
 }
-public sealed record ContourSettings(double Sensitivity = 5, double MinimumLengthPixels = 8, double SimplificationMillimeters = .04, bool AdaptiveThreshold = true)
+public sealed record ContourSettings(double Sensitivity = 5, double MinimumLengthPixels = 8, double SimplificationMillimeters = .005, bool AdaptiveThreshold = true, ContourProfile Profile = ContourProfile.Automatic)
 {
     public void Validate()
     {
-        if (!double.IsFinite(Sensitivity) || Sensitivity is < 1 or > 10 || !double.IsFinite(MinimumLengthPixels) || MinimumLengthPixels is < 2 or > 1000 || !double.IsFinite(SimplificationMillimeters) || SimplificationMillimeters is < .001 or > 1)
+        if (!Enum.IsDefined(Profile) || !double.IsFinite(Sensitivity) || Sensitivity is < 1 or > 10 || !double.IsFinite(MinimumLengthPixels) || MinimumLengthPixels is < 2 or > 1000 || !double.IsFinite(SimplificationMillimeters) || SimplificationMillimeters is < .001 or > 1)
             throw new ArgumentException("轮廓灵敏度需为 1–10，最短长度需为 2–1000 像素");
     }
 }

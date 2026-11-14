@@ -116,6 +116,36 @@
       "version": "2.0.0",
       "license": "BSL-1.0",
       "usage": "outline simplification"
+    },
+    {
+      "name": "OpenCV",
+      "version": "4.13.0",
+      "license": "Apache-2.0",
+      "repository": "https://github.com/opencv/opencv",
+      "commit": "fe38fc608f6acb8b68953438a62305d8318f4fcd",
+      "usage": "CLAHE, bilateral/Gaussian filters, Canny, threshold and connected components"
+    },
+    {
+      "name": "OpenCvSharp4",
+      "version": "4.13.0.20260602",
+      "license": "Apache-2.0",
+      "repository": "https://github.com/shimat/opencvsharp",
+      "commit": "99b2313468074a2fc876e5a273659e9e2e34a6b2",
+      "usage": "managed bridge and native extern built in CI"
+    },
+    {
+      "name": "Sdcb.OpenCvSharp4.mini.runtime.linux-x64",
+      "version": "4.13.0.45",
+      "license": "Apache-2.0",
+      "repository": "https://github.com/sdcb/opencvsharp-mini-runtime",
+      "commit": "9c4b7b52d17ae7764c28a2d21dc5bcf4de51e7bb",
+      "usage": "Linux CI runtime; Android build reuses pinned mini patch with 16 KB relink from source"
+    },
+    {
+      "name": "ZXing.Net",
+      "version": "0.16.11",
+      "license": "Apache-2.0",
+      "usage": "tests only, dense QR encode and decode of reconstructed contours"
     }
   ]
 }

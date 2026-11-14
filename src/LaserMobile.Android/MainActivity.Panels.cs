@@ -1,7 +1,7 @@
 using Android.OS;
 using Android.Views;
 using Android.Widget;
-using System.Globalization;
+using Android.Text;
 using LaserMobile.AndroidApp.Services;
 namespace LaserMobile.AndroidApp;
 
@@ -18,7 +18,7 @@ public sealed partial class MainActivity
     private LinearLayout OpenPanel(string title, Action? cancelled = null)
     {
         ClosePanel(); HideKeyboard(); panelCancelled = cancelled;
-        foreach (var page in pages) page.Visibility = ViewStates.Gone;
+        foreach (var page in pages) { ResetMotion(page); page.Visibility = ViewStates.Gone; }
         appPanel.RemoveAllViews(); appPanel.Visibility = ViewStates.Visible;
         var screen = new LinearLayout(this) { Orientation = Orientation.Vertical, Clickable = true };
         screen.SetPadding(Dp(12), Dp(8), Dp(12), Dp(8)); screen.Background = Surface(Dark ? "#172130" : "#FFFFFF");
@@ -28,6 +28,7 @@ public sealed partial class MainActivity
         {
             panelBack = new PanelBack(ClosePanel); OnBackInvokedDispatcher!.RegisterOnBackInvokedCallback(0, panelBack);
         }
+        Reveal(screen);
         return screen;
     }
     private void ClosePanel()
@@ -35,7 +36,7 @@ public sealed partial class MainActivity
         var cancelled = panelCancelled; panelCancelled = null;
         if (OperatingSystem.IsAndroidVersionAtLeast(33) && panelBack is not null) OnBackInvokedDispatcher!.UnregisterOnBackInvokedCallback(panelBack);
         (panelBack as IDisposable)?.Dispose(); panelBack = null;
-        if (PanelVisible) { appPanel.Visibility = ViewStates.Gone; appPanel.RemoveAllViews(); for (int i = 0; i < pages.Count; i++) pages[i].Visibility = i == currentPage ? ViewStates.Visible : ViewStates.Gone; }
+        if (PanelVisible) { appPanel.Visibility = ViewStates.Gone; appPanel.RemoveAllViews(); for (int i = 0; i < pages.Count; i++) { ResetMotion(pages[i]); pages[i].Visibility = i == currentPage ? ViewStates.Visible : ViewStates.Gone; } Reveal(pages[currentPage]); }
         cancelled?.Invoke();
     }
     private sealed class PanelBack(Action action) : Java.Lang.Object, Android.Window.IOnBackInvokedCallback { public void OnBackInvoked() => action(); }
@@ -81,31 +82,51 @@ public sealed partial class MainActivity
     private void ShowPagedText(string title, string message)
     {
         if (IsDestroyed) return;
-        int columns = Math.Clamp((int)((Resources!.Configuration!.ScreenWidthDp - 56) / (14 * Math.Max(1, Resources.Configuration.FontScale))), 12, 32);
-        var lines = new List<string>();
-        foreach (var line in message.Replace("\r", "").Split('\n'))
+        int pageIndex = 0; string[] chunks = [message.Replace("\r", "")];
+        var screen = OpenPanel(title);
+        var text = new TextView(this) { Text = message, TextSize = 14 }; text.SetTextColor(TextColor); text.SetPadding(Dp(4), Dp(4), Dp(4), Dp(4));
+        screen.AddView(text, new LinearLayout.LayoutParams(-1, 0, 1));
+        var pager = Row(screen); var previous = Button(pager, "上一页", () => { pageIndex--; Render(); return Task.CompletedTask; });
+        var counter = Label(pager, "", 12, 1); var next = Button(pager, "下一页", () => { pageIndex++; Render(); return Task.CompletedTask; }); pager.Visibility = ViewStates.Gone;
+        Button(screen, "返回", () => { ClosePanel(); return Task.CompletedTask; });
+        void Render()
         {
-            int[] positions = StringInfo.ParseCombiningCharacters(line); if (positions.Length == 0) { lines.Add(""); continue; }
-            for (int i = 0; i < positions.Length; i += columns) { int end = i + columns < positions.Length ? positions[i + columns] : line.Length; lines.Add(line[positions[i]..end]); }
+            pageIndex = Math.Clamp(pageIndex, 0, chunks.Length - 1); SetLabel(text, chunks[pageIndex]); SetLabel(counter, $"{pageIndex + 1}/{chunks.Length}");
+            previous.Visibility = pageIndex == 0 ? ViewStates.Invisible : ViewStates.Visible; next.Visibility = pageIndex + 1 == chunks.Length ? ViewStates.Invisible : ViewStates.Visible;
         }
-        var chunks = lines.Chunk(7).Select(chunk => string.Join('\n', chunk)).ToArray(); if (chunks.Length == 0) chunks = ["暂无内容"];
-        int page = 0; var screen = OpenPanel(title); var content = new LinearLayout(this) { Orientation = Orientation.Vertical }; screen.AddView(content, new LinearLayout.LayoutParams(-1, 0, 1));
-        var text = Label(content, chunks[0], 14, 9); Button? previous = null, next = null; TextView? counter = null;
-        void Render() { text.Text = chunks[page]; if (counter is not null) counter.Text = $"{page + 1}/{chunks.Length}"; if (previous is not null) previous.Visibility = page == 0 ? ViewStates.Invisible : ViewStates.Visible; if (next is not null) next.Visibility = page + 1 == chunks.Length ? ViewStates.Invisible : ViewStates.Visible; }
-        if (chunks.Length > 1)
+        void Reflow()
         {
-            counter = Label(screen, "", 12, 1); var row = Row(screen);
-            previous = Button(row, "上一页", () => { page--; Render(); return Task.CompletedTask; }); next = Button(row, "下一页", () => { page++; Render(); return Task.CompletedTask; });
+            int width = text.Width - text.PaddingLeft - text.PaddingRight, height = text.Height - text.PaddingTop - text.PaddingBottom;
+            if (width <= 0 || height <= 0) return;
+            using var value = new Java.Lang.String(message.Replace("\r", ""));
+            using var builder = StaticLayout.Builder.Obtain(value, 0, message.Replace("\r", "").Length, text.Paint!, width)!;
+            using var layout = builder.SetIncludePad(true)!.Build()!;
+            int fullHeight = height + (pager.Visibility == ViewStates.Visible ? pager.Height : 0);
+            if (layout.Height <= fullHeight)
+            {
+                chunks = [value.ToString()]; pager.Visibility = ViewStates.Gone; Render(); return;
+            }
+            int available = Math.Max(Dp(48), height - (pager.Visibility == ViewStates.Visible ? 0 : Dp(54)));
+            var parts = new List<string>(); int first = 0;
+            while (first < layout.LineCount)
+            {
+                int last = first;
+                while (last + 1 < layout.LineCount && layout.GetLineBottom(last + 1) - layout.GetLineTop(first) <= available) last++;
+                int start = layout.GetLineStart(first), end = layout.GetLineEnd(last);
+                parts.Add(value.ToString()[start..end].TrimEnd('\n')); first = last + 1;
+            }
+            chunks = parts.ToArray(); pager.Visibility = ViewStates.Visible; Render();
         }
-        Button(screen, "返回", () => { ClosePanel(); return Task.CompletedTask; }); Render();
+        text.LayoutChange += (_, _) => Reflow(); screen.Post(Reflow);
     }
+
     private void ShowMessage(string title, string message) => ShowPagedText(title, message);
     private void ShowError(string message)
     {
         if (IsDestroyed) return;
         notice = message; noticeClose.Visibility = ViewStates.Visible;
         statusBar.Background = Surface(Dark ? "#3B301E" : "#FFF1D6");
-        RefreshStatus();
+        RefreshStatus(); Reveal(statusBar);
     }
     private void ClearNotice()
     {

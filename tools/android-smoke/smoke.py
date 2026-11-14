@@ -5,6 +5,7 @@ import subprocess
 import time
 import struct
 import zlib
+import shutil
 import xml.etree.ElementTree as ET
 
 APP = "io.github.dghhskywalker.grbltoolmobile"
@@ -112,6 +113,8 @@ def fixture_files():
     (directory / "complex.png").write_bytes(complex_png)
     (directory / "fake.png").write_bytes(b"%PDF-1.7 disguised document")
     (directory / "unsupported.pdf").write_bytes(b"%PDF-1.7 unsupported")
+    for name in ("source-photo.png", "source-qr.png"):
+        shutil.copyfile(pathlib.Path("artifacts/core/contours") / name, directory / name)
     for path in directory.iterdir():
         adb("push", str(path), "/sdcard/Download/" + path.name)
         adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", "file:///sdcard/Download/" + path.name)
@@ -146,6 +149,8 @@ try:
     adb("install", "-r", str(apks[0]))
     adb("shell", "pm", "grant", APP, "android.permission.POST_NOTIFICATIONS")
     fixture_files()
+    for setting in ("animator_duration_scale", "transition_animation_scale", "window_animation_scale"):
+        adb("shell", "settings", "put", "global", setting, "1")
     time.sleep(15)
     launch()
     wait("体验完整演示", timeout=60)
@@ -187,7 +192,14 @@ try:
     tap("执行记录")
     wait("103/103 行")
     no_scroll()
-    screenshot("05-paged-history")
+    assert find("下一页") is None and find("上一页") is None
+    screenshot("05-fit-history")
+    tap("执行详情")
+    wait("执行详情")
+    no_scroll()
+    assert find("下一页") is None and find("上一页") is None, "Short details were artificially paginated"
+    screenshot("05b-full-width-details")
+    tap("返回")
     tap("作品")
     choose_bitmap("fake.png")
     wait("图片内容无效")
@@ -204,7 +216,7 @@ try:
     wait("complex.png")
     tap("加工参数")
     assert find("下一步") is None and find("上一步") is None
-    for label in ("加工宽度 mm", "光栅行距 mm", "加工进给 mm/min", "加工最大功率 S", "Gamma", "二值阈值（0–255）", "最大图像宽度 mm", "最大图像高度 mm", "最大处理宽度 px", "最大处理高度 px", "轮廓平滑（1–10）", "最短轮廓长度 px"):
+    for label in ("加工宽度 mm", "光栅行距 mm", "加工进给 mm/min", "加工最大功率 S", "Gamma", "二值阈值（0–255）", "最大图像宽度 mm", "最大图像高度 mm", "最大处理宽度 px", "最大处理高度 px", "轮廓细节（1–10）", "最短轮廓长度 px"):
         assert find(label) is not None, label
     no_scroll()
     screenshot("07a-all-parameters")
@@ -212,7 +224,7 @@ try:
     wait("选择生成方式")
     no_scroll()
     screenshot("07b-app-algorithm-picker")
-    tap("轮廓 · LaserGRBL")
+    tap("轮廓 · OpenCV")
     def set_number(label, value):
         tap(label)
         adb("shell", "input", "keyevent", "KEYCODE_MOVE_END")
@@ -249,6 +261,28 @@ try:
     wait("Atkinson", timeout=45)
     screenshot("07e-desktop-atkinson")
     tap("加工参数")
+    set_number("最大处理宽度 px", "1000")
+    set_number("最大处理高度 px", "1000")
+    tap("选择生成方式")
+    tap("轮廓 · OpenCV")
+    tap("选择轮廓策略")
+    tap("图文保真")
+    tap("预览")
+    choose_bitmap("source-qr.png")
+    tap("生成任务")
+    wait("轮廓 · OpenCV", timeout=60)
+    no_scroll()
+    screenshot("07f-dense-qr-opencv")
+    tap("加工参数")
+    tap("选择轮廓策略")
+    tap("照片细节")
+    tap("预览")
+    choose_bitmap("source-photo.png")
+    tap("生成任务")
+    wait("处理 512×512 px", timeout=90)
+    no_scroll()
+    screenshot("07g-photo-details-opencv")
+    tap("加工参数")
     set_number("加工宽度 mm", "25")
     tap("加工")
     wait("输入已变化")
@@ -265,10 +299,19 @@ try:
         tap(page)
         no_scroll()
         screenshot("09-compact-" + page)
+    adb("shell", "dumpsys", "gfxinfo", APP, "reset")
+    recording = subprocess.Popen(["adb", "shell", "screenrecord", "--time-limit", "12", "/sdcard/grbl-transitions.mp4"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for page in ("作品", "设备", "加工", "历史", "设备"):
+        tap(page)
+    recording.wait(timeout=20)
+    adb("pull", "/sdcard/grbl-transitions.mp4", str(OUT / "transitions.mp4"))
+    (OUT / "frame-stats.txt").write_bytes(adb("shell", "dumpsys", "gfxinfo", APP, "framestats"))
     tap("设备")
     for section in ("定位", "参数", "维护"):
         tap(section)
         no_scroll()
+        assert find("下一步") is None and find("上一步") is None
+    screenshot("09b-device-maintenance-single-page")
     tap("作品")
     tap("加工参数")
     no_scroll()
@@ -284,7 +327,7 @@ try:
         assert find(label) is not None, label
     assert find("下一步") is None and find("上一步") is None
     screenshot("11-all-adjustments")
-    (OUT / "result.txt").write_text("PASS: fixed screens, bottom navigation, import allowlist, disguised-file rejection, valid PNG import, pause/resume, background completion, history, dirty input, compact 360x640 at 1.3 font scale, keyboard layout; zero app scrolling gestures, no app-owned platform dialogs/spinners, inline errors, app confirmations, uniform physical/pixel fit, desktop LaserGRBL contours, explicit travel display, desktop dithering, all parameters and all adjustments in one page\n")
+    (OUT / "result.txt").write_text("PASS: fixed screens, bottom navigation, import allowlist, disguised-file rejection, valid PNG import, pause/resume, background completion, history, dirty input, compact 360x640 at 1.3 font scale, keyboard layout; zero app scrolling gestures, no app-owned platform dialogs/spinners, inline errors, app confirmations, uniform physical/pixel fit, desktop LaserGRBL contours, explicit travel display, desktop dithering, all artwork/device settings in one page, measured full-width details and history pagination, native OpenCV photo/QR modes, enabled 160ms transitions and motion capture\n")
 finally:
     (OUT / "logcat.txt").write_bytes(adb("logcat", "-d", "-t", "2500"))
     screenshot("last-screen")

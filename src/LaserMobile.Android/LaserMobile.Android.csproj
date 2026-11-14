@@ -4,8 +4,8 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>LaserMobile.AndroidApp</RootNamespace>
     <ApplicationId>io.github.dghhskywalker.grbltoolmobile</ApplicationId>
-    <ApplicationVersion>6</ApplicationVersion>
-    <ApplicationDisplayVersion>0.6.0</ApplicationDisplayVersion>
+    <ApplicationVersion>7</ApplicationVersion>
+    <ApplicationDisplayVersion>0.7.0</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>29</SupportedOSPlatformVersion>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <RunAOTCompilation>false</RunAOTCompilation>
@@ -19,5 +19,7 @@
     <PackageReference Include="UsbSerialForAndroid" />
     <PackageReference Include="SkiaSharp.Views" />
     <ProjectReference Include="../LaserMobile.Imaging.Skia/LaserMobile.Imaging.Skia.csproj" />
+    <AndroidNativeLibrary Include="../../artifacts/opencv-native/arm64-v8a/libOpenCvSharpExtern.so" Abi="arm64-v8a"/>
+    <AndroidNativeLibrary Include="../../artifacts/opencv-native/x86_64/libOpenCvSharpExtern.so" Abi="x86_64"/>
   </ItemGroup>
 </Project>

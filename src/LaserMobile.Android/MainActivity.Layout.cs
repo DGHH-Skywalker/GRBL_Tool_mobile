@@ -8,6 +8,7 @@ using Android.Widget;
 using SkiaSharp.Views.Android;
 using LaserMobile.Domain;
 using LaserMobile.Persistence;
+using LaserMobile.Imaging.Skia;
 using LaserMobile.AndroidApp.Services;
 namespace LaserMobile.AndroidApp;
 
@@ -24,7 +25,9 @@ public sealed partial class MainActivity
     private readonly List<LinearLayout> secondaryBars = [];
     private bool importing;
     private ImportKind? pendingImport;
-    private int CardsPerPage => Resources!.Configuration!.ScreenHeightDp >= 700 && Resources.Configuration.FontScale <= 1.15f ? 3 : 2;
+    private LinearLayout libraryPager = null!, historyPager = null!;
+    private int libraryCardHeight, historyCardHeight;
+    private Button libraryPrevious = null!, libraryNext = null!, historyPrevious = null!, historyNext = null!;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -42,6 +45,7 @@ public sealed partial class MainActivity
 #pragma warning disable CA1422
         if (OperatingSystem.IsAndroidVersionAtLeast(30)) Window.SetDecorFitsSystemWindows(false);
 #pragma warning restore CA1422
+        contourProfile = (ContourProfile)Math.Clamp(preferences.GetInt("contourProfile", 0), 0, 3);
         generationMode = (GenerationMode)Math.Clamp(preferences.GetInt("generationMode", 0), 0, AlgorithmNames.Length - 1);
         statusBar = Row(root); statusBar.Background = Surface(Dark ? "#1C2C43" : "#E7F0FF");
         status = Label(statusBar, "未连接 · 可体验完整演示", 12, 2); status.LayoutParameters = new LinearLayout.LayoutParams(0, -2, 1); status.SetPadding(Dp(12), Dp(4), Dp(8), Dp(4));
@@ -140,8 +144,10 @@ public sealed partial class MainActivity
     }
     private void ShowPage(int index)
     {
+        bool changed = currentPage != index || pages[index].Visibility != ViewStates.Visible;
         ClosePanel(); currentPage = index; HideKeyboard();
-        for (int i = 0; i < pages.Count; i++) { pages[i].Visibility = i == index ? ViewStates.Visible : ViewStates.Gone; StyleButton(navigation[i], i == index); navigationIcons[i]?.SetTint(i == index ? Android.Graphics.Color.White : TextColor); }
+        for (int i = 0; i < pages.Count; i++) { ResetMotion(pages[i]); pages[i].Visibility = i == index ? ViewStates.Visible : ViewStates.Gone; StyleButton(navigation[i], i == index); navigationIcons[i]?.SetTint(i == index ? Android.Graphics.Color.White : TextColor); }
+        if (changed) Reveal(pages[index]);
         if (index == 3) RefreshHistory();
     }
     private LinearLayout[] Tabs(LinearLayout parent, string[] titles, out Action<int> select)
@@ -153,28 +159,10 @@ public sealed partial class MainActivity
             panels[i] = new LinearLayout(this) { Orientation = Orientation.Vertical, Visibility = i == 0 ? ViewStates.Visible : ViewStates.Gone };
             frame.AddView(panels[i], new FrameLayout.LayoutParams(-1, -1));
         }
-        void Pick(int index) { HideKeyboard(); for (int i = 0; i < panels.Length; i++) { panels[i].Visibility = i == index ? ViewStates.Visible : ViewStates.Gone; StyleButton(buttons[i], i == index); } }
+        int selectedTab = 0;
+        void Pick(int index) { bool changed = selectedTab != index; selectedTab = index; HideKeyboard(); for (int i = 0; i < panels.Length; i++) { ResetMotion(panels[i]); panels[i].Visibility = i == index ? ViewStates.Visible : ViewStates.Gone; StyleButton(buttons[i], i == index); } if (changed) Reveal(panels[index]); }
         for (int i = 0; i < titles.Length; i++) { int index = i; buttons.Add(Button(row, titles[i], () => { Pick(index); return Task.CompletedTask; })); }
         select = Pick; Pick(0); return panels;
-    }
-    private void FormPager(LinearLayout parent, params (string Title, Action<LinearLayout> Build)[] steps)
-    {
-        int current = 0; var title = Label(parent, "", 13, 1); var frame = new FrameLayout(this);
-        parent.AddView(frame, new LinearLayout.LayoutParams(-1, 0, 1)); var forms = new List<LinearLayout>();
-        foreach (var step in steps)
-        {
-            var form = new LinearLayout(this) { Orientation = Orientation.Vertical, Visibility = ViewStates.Gone }; step.Build(form); frame.AddView(form, new FrameLayout.LayoutParams(-1, -1)); forms.Add(form);
-        }
-        var footer = Row(parent); Button? previous = null, next = null;
-        void Pick(int index)
-        {
-            HideKeyboard(); current = Math.Clamp(index, 0, steps.Length - 1); title.Text = $"{steps[current].Title} · {current + 1}/{steps.Length}";
-            for (int i = 0; i < forms.Count; i++) forms[i].Visibility = i == current ? ViewStates.Visible : ViewStates.Gone;
-            if (previous is not null) previous.Visibility = current == 0 ? ViewStates.Invisible : ViewStates.Visible;
-            if (next is not null) next.Visibility = current == steps.Length - 1 ? ViewStates.Invisible : ViewStates.Visible;
-        }
-        previous = Button(footer, "上一步", () => { Pick(current - 1); return Task.CompletedTask; });
-        next = Button(footer, "下一步", () => { Pick(current + 1); return Task.CompletedTask; }); Pick(0);
     }
     private void BuildDevice()
     {
@@ -196,26 +184,18 @@ public sealed partial class MainActivity
         row = Row(p); Button(row, "Y−", () => Session().Jog(0, -1, Value(jogStep), 300)); Button(row, "Y+", () => Session().Jog(0, 1, Value(jogStep), 300));
         row = Row(p); Button(row, "设为工作零点", async () => { if (await Ask("工作零点", "将当前位置作为工件 X/Y 零点？")) await Session().SetOrigin(); }); Button(row, "取消点动", () => Session().CancelJog());
         Button(p, "确认就绪", ArmDevice);
-        FormPager(parts[2],
-            ("工作区域", form => { areaWidth = Number(form, "工作区域宽度 mm", "40", "areaWidth"); areaHeight = Number(form, "工作区域高度 mm", "40", "areaHeight"); }),
-            ("运行上限", form => { maxFeed = Number(form, "进给上限 mm/min", "1200", "maxFeed"); maxPower = Number(form, "功率上限 S（设备 $30）", "1000", "maxPower"); }),
-            ("串口与预设", form => { baud = Number(form, "波特率", "115200", "baud"); Button(form, "导入设备配置 JSON", () => { OpenPicker(ImportKind.DeviceProfile); return Task.CompletedTask; }); }));
-        FormPager(parts[3],
-            ("设备维护", form =>
-            {
-                Button(form, "硬件回零", async () => { if (await Ask("回零", "确认回零开关、方向与设备 $22=1 配置？")) await Session().Home(true); });
-                Button(form, "报警解锁", async () => { if (await Ask("解锁", "确认已处理报警原因并检查位置？")) await Session().Unlock(true); });
-                Button(form, "选择工作模式", () => Session().SelectStandardFrame());
-                Button(form, "软件复位", async () => { if (await Ask("软件复位", "清除控制器队列并重新读取配置？")) await Session().ResetController(true); });
-            }),
-            ("演示与诊断", form =>
-            {
-                var controls = Row(form); Button(controls, "模拟报警", () => { Demo().InjectAlarm(); return Task.CompletedTask; }); Button(controls, "模拟复位", () => { Demo().InjectReset(); return Task.CompletedTask; });
-                Button(form, "模拟断线", () => { Demo().InjectDisconnect(); return Task.CompletedTask; });
-                Button(form, "协议日志", () => { ShowPagedText("协议日志", string.Join('\n', Session().Log)); return Task.CompletedTask; });
-                var exports = Row(form); Button(exports, "导出日志", () => { ExportDocument(22, "grbl-diagnostics.txt"); return Task.CompletedTask; });
-                Button(exports, "关于", () => { ShowPagedText("GRBL Tool Mobile 0.6.0", "GPL-3.0-or-later\nUSBSerialForAndroid / SkiaSharp / Svg.Skia：MIT\nClipper2：Boost-1.0\nCyotek 抖动：MIT\n星光扩展独立维护，硬件资料待确认\n源码 github.com/DGHH-Skywalker/GRBL_Tool_mobile"); return Task.CompletedTask; });
-            }));
+        row = CompactRow(parts[2]); areaWidth = CompactNumber(row, "区域宽 mm", "工作区域宽度 mm", "40", "areaWidth"); areaHeight = CompactNumber(row, "区域高 mm", "工作区域高度 mm", "40", "areaHeight");
+        row = CompactRow(parts[2]); maxFeed = CompactNumber(row, "进给上限", "进给上限 mm/min", "1200", "maxFeed"); maxPower = CompactNumber(row, "功率上限 S", "功率上限 S（设备 $30）", "1000", "maxPower");
+        row = CompactRow(parts[2]); baud = CompactNumber(row, "波特率", "波特率", "115200", "baud");
+        Button(parts[2], "导入设备配置 JSON", () => { OpenPicker(ImportKind.DeviceProfile); return Task.CompletedTask; });
+        p = parts[3]; Label(p, "设备维护", 12, 1);
+        row = Row(p); Button(row, "硬件回零", async () => { if (await Ask("回零", "确认回零开关、方向与设备 $22=1 配置？")) await Session().Home(true); }); Button(row, "报警解锁", async () => { if (await Ask("解锁", "确认已处理报警原因并检查位置？")) await Session().Unlock(true); });
+        row = Row(p); Button(row, "选择工作模式", () => Session().SelectStandardFrame()); Button(row, "软件复位", async () => { if (await Ask("软件复位", "清除控制器队列并重新读取配置？")) await Session().ResetController(true); });
+        Label(p, "演示与诊断", 12, 1);
+        row = Row(p); Button(row, "模拟报警", () => { Demo().InjectAlarm(); return Task.CompletedTask; }); Button(row, "模拟复位", () => { Demo().InjectReset(); return Task.CompletedTask; });
+        row = Row(p); Button(row, "模拟断线", () => { Demo().InjectDisconnect(); return Task.CompletedTask; }); Button(row, "协议日志", () => { ShowPagedText("协议日志", string.Join('\n', Session().Log)); return Task.CompletedTask; });
+        row = Row(p); Button(row, "导出日志", () => { ExportDocument(22, "grbl-diagnostics.txt"); return Task.CompletedTask; });
+        Button(row, "关于", () => { ShowPagedText("GRBL Tool Mobile 0.7.0", "GPL-3.0-or-later\nOpenCV / OpenCvSharp / Sdcb：Apache-2.0\nUSBSerialForAndroid / SkiaSharp / Svg.Skia：MIT\nClipper2：Boost-1.0\nCyotek 抖动：MIT\n源码 github.com/DGHH-Skywalker/GRBL_Tool_mobile"); return Task.CompletedTask; });
     }
     private async Task ArmDevice() { if (await Ask("设备就绪", "确认设备配置、工作原点与工作区域？")) await Session().Arm(true); }
     private async Task DisconnectDevice()
@@ -273,7 +253,7 @@ public sealed partial class MainActivity
     {
         var parts = Tabs(pages[3], ["任务库", "执行记录"], out _);
         libraryCards = new LinearLayout(this) { Orientation = Orientation.Vertical }; parts[0].AddView(libraryCards, new LinearLayout.LayoutParams(-1, 0, 1));
-        var row = Row(parts[0]); Button(row, "上一页", () => { libraryIndex = Math.Max(0, libraryIndex - 1); RefreshHistory(); return Task.CompletedTask; }); libraryPage = Label(row, "1/1", 12, 1); Button(row, "下一页", () => { libraryIndex++; RefreshHistory(); return Task.CompletedTask; });
+        var row = Row(parts[0]); libraryPager = row; libraryPrevious = Button(row, "上一页", () => { libraryIndex = Math.Max(0, libraryIndex - 1); RefreshHistory(); return Task.CompletedTask; }); libraryPage = Label(row, "1/1", 12, 1); libraryNext = Button(row, "下一页", () => { libraryIndex++; RefreshHistory(); return Task.CompletedTask; });
         row = Row(parts[0]); Button(row, "导出任务", () => { if (selected is null) throw new InvalidOperationException("请先选择任务"); ExportDocument(21, selected.Name + ".nc"); return Task.CompletedTask; });
         Button(row, "删除所选", async () =>
         {
@@ -282,27 +262,53 @@ public sealed partial class MainActivity
             if (await Ask("删除任务", selected.Name)) { library.Delete(selected.Id); selected = null; prepared = null; preview?.Dispose(); preview = null; InvalidateDraft(); artwork.Text = "尚未选择任务"; canvas.Invalidate(); jobCanvas?.Invalidate(); RefreshHistory(); }
         });
         historyCards = new LinearLayout(this) { Orientation = Orientation.Vertical }; parts[1].AddView(historyCards, new LinearLayout.LayoutParams(-1, 0, 1));
-        row = Row(parts[1]); Button(row, "上一页", () => { historyIndex = Math.Max(0, historyIndex - 1); RefreshHistory(); return Task.CompletedTask; }); historyPage = Label(row, "1/1", 12, 1); Button(row, "下一页", () => { historyIndex++; RefreshHistory(); return Task.CompletedTask; });
+        row = Row(parts[1]); historyPager = row; historyPrevious = Button(row, "上一页", () => { historyIndex = Math.Max(0, historyIndex - 1); RefreshHistory(); return Task.CompletedTask; }); historyPage = Label(row, "1/1", 12, 1); historyNext = Button(row, "下一页", () => { historyIndex++; RefreshHistory(); return Task.CompletedTask; });
         Button(parts[1], "刷新记录", () => { RefreshHistory(); return Task.CompletedTask; });
+        libraryCards.LayoutChange += (_, _) => { if (currentPage == 3 && !PanelVisible) RefreshHistory(); };
+        historyCards.LayoutChange += (_, _) => { if (currentPage == 3 && !PanelVisible) RefreshHistory(); };
     }
     private void RefreshHistory()
     {
-        var jobs = library.List(); var entries = executions.History(); int count = CardsPerPage;
-        libraryIndex = Math.Clamp(libraryIndex, 0, Math.Max(0, (jobs.Count - 1) / count)); historyIndex = Math.Clamp(historyIndex, 0, Math.Max(0, (entries.Count - 1) / count));
+        var jobs = library.List(); var entries = executions.History();
+        int libraryCount = HistoryCapacity(libraryCards, libraryPager, jobs.Count, libraryCardHeight, false);
+        int historyCount = HistoryCapacity(historyCards, historyPager, entries.Count, historyCardHeight, true);
+        libraryIndex = Math.Clamp(libraryIndex, 0, Math.Max(0, (jobs.Count - 1) / libraryCount)); historyIndex = Math.Clamp(historyIndex, 0, Math.Max(0, (entries.Count - 1) / historyCount));
         libraryCards.RemoveAllViews(); historyCards.RemoveAllViews();
-        foreach (var job in jobs.Skip(libraryIndex * count).Take(count))
+        foreach (var job in jobs.Skip(libraryIndex * libraryCount).Take(libraryCount))
         {
             var card = new LinearLayout(this) { Orientation = Orientation.Vertical }; libraryCards.AddView(card);
             Button(card, job.Name, async () => { await LoadSaved(job.Id); ShowPage(1); artworkTabs(0); }); Label(card, $"{job.CreatedAt.ToLocalTime():MM-dd HH:mm} · {job.Hash[..12]}", 12, 1);
         }
-        foreach (var entry in entries.Skip(historyIndex * count).Take(count))
+        foreach (var entry in entries.Skip(historyIndex * historyCount).Take(historyCount))
         {
             var card = new LinearLayout(this) { Orientation = Orientation.Vertical }; historyCards.AddView(card);
             Label(card, entry.JobName ?? entry.Id.ToString()[..8], 14, 1); Label(card, $"{StateName(entry.State)} · {entry.AcknowledgedLines}/{entry.TotalLines} 行", 12, 1);
             Button(card, "执行详情", () => { ShowPagedText("执行详情", $"{entry.JobName}\n{StateName(entry.State)} · {entry.AcknowledgedLines}/{entry.TotalLines} 行\n{entry.StartedAt}\n{entry.Parameters}\n{entry.Hash}\n{entry.Error}"); return Task.CompletedTask; });
         }
         if (jobs.Count == 0) Label(libraryCards, "生成任务后显示在这里"); if (entries.Count == 0) Label(historyCards, "开始加工后显示执行记录");
-        libraryPage.Text = $"{libraryIndex + 1}/{Math.Max(1, (jobs.Count + count - 1) / count)}"; historyPage.Text = $"{historyIndex + 1}/{Math.Max(1, (entries.Count + count - 1) / count)}";
+        libraryPage.Text = $"{libraryIndex + 1}/{Math.Max(1, (jobs.Count + libraryCount - 1) / libraryCount)}"; historyPage.Text = $"{historyIndex + 1}/{Math.Max(1, (entries.Count + historyCount - 1) / historyCount)}";
+        libraryPrevious.Visibility = libraryIndex == 0 ? ViewStates.Invisible : ViewStates.Visible; libraryNext.Visibility = (libraryIndex + 1) * libraryCount >= jobs.Count ? ViewStates.Invisible : ViewStates.Visible;
+        historyPrevious.Visibility = historyIndex == 0 ? ViewStates.Invisible : ViewStates.Visible; historyNext.Visibility = (historyIndex + 1) * historyCount >= entries.Count ? ViewStates.Invisible : ViewStates.Visible;
+        MeasureHistoryCards();
+    }
+    private int HistoryCapacity(LinearLayout cards, LinearLayout pager, int total, int measured, bool execution)
+    {
+        int card = measured > 0 ? measured : Dp(execution ? 108 : 80);
+        int height = cards.Height > 0 ? cards.Height : Dp(Math.Max(160, Resources!.Configuration!.ScreenHeightDp - 250));
+        height += pager.Visibility == ViewStates.Visible ? pager.Height : 0;
+        bool fits = (long)total * card <= height;
+        pager.Visibility = fits ? ViewStates.Gone : ViewStates.Visible;
+        return Math.Max(1, fits ? total : (height - Dp(54)) / card);
+    }
+    private void MeasureHistoryCards()
+    {
+        libraryCards.Post(() =>
+        {
+            int a = libraryCards.GetChildAt(0)?.Height ?? 0, b = historyCards.GetChildAt(0)?.Height ?? 0;
+            bool changed = a > 0 && libraryCardHeight != a || b > 0 && historyCardHeight != b;
+            if (a > 0) libraryCardHeight = a; if (b > 0) historyCardHeight = b;
+            if (changed && currentPage == 3 && !PanelVisible) RefreshHistory();
+        });
     }
     protected override void OnSaveInstanceState(Bundle outState)
     { if (pendingImport is { } kind) outState.PutInt("pendingImport", (int)kind); base.OnSaveInstanceState(outState); }

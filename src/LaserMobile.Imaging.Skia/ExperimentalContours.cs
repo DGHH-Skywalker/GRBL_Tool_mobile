@@ -17,7 +17,14 @@ public static class ExperimentalContours
         if (width < 3 || height < 3 || (long)width * height > ImageSizing.SampleBudget || gray.Length != width * height) throw new ArgumentException("轮廓图像尺寸无效");
         if (!double.IsFinite(physicalWidth) || !double.IsFinite(physicalHeight) || physicalWidth <= 0 || physicalHeight <= 0 || physicalWidth > limits.Width || physicalHeight > limits.Height || !double.IsFinite(settings.Feed) || settings.Feed <= 0 || settings.Feed > limits.MaxFeed || !double.IsFinite(settings.Power) || settings.Power <= 0 || settings.Power > limits.MaxPower || !double.IsFinite(settings.Gamma) || settings.Gamma is < .1 or > 5) throw new ArgumentException("轮廓参数超限");
         bool[] edges = DetectEdges(gray, width, height, settings.Gamma, settings.Invert, options.Sensitivity, token);
-        var links = new byte[gray.Length]; var code = new StringBuilder("G21 G90 G54 G17 G94\nM5\n"); int paths = 0, segments = 0;
+        return TraceEdges(edges, width, height, physicalWidth, physicalHeight, settings, options, limits, token);
+    }
+    public static ProgramAnalysis TraceEdges(bool[] edges, int width, int height, double physicalWidth, double physicalHeight, RasterSettings settings, ContourSettings options, JobLimits limits, CancellationToken token = default, bool preserveJunctions = false)
+    {
+        options.Validate(); limits.Validate(); token.ThrowIfCancellationRequested();
+        if (width < 3 || height < 3 || (long)width * height > ImageSizing.SampleBudget || edges.Length != width * height) throw new ArgumentException("轮廓图像尺寸无效");
+        if (!double.IsFinite(physicalWidth) || !double.IsFinite(physicalHeight) || physicalWidth <= 0 || physicalHeight <= 0 || physicalWidth > limits.Width || physicalHeight > limits.Height || !double.IsFinite(settings.Feed) || settings.Feed <= 0 || settings.Feed > limits.MaxFeed || !double.IsFinite(settings.Power) || settings.Power <= 0 || settings.Power > limits.MaxPower || !double.IsFinite(settings.Gamma) || settings.Gamma is < .1 or > 5) throw new ArgumentException("轮廓参数超限");
+        var links = new byte[edges.Length]; var code = new StringBuilder("G21 G90 G54 G17 G94\nM5\n"); int paths = 0, segments = 0;
         int Neighbors(int p, Span<int> neighbors, Span<int> dirOutput)
         {
             int x = p % width, y = p / width, count = 0;
@@ -49,10 +56,10 @@ public static class ExperimentalContours
                 int choice = next[0] == previous ? 1 : 0;
                 previous = current; current = next[choice]; direction = dirs[choice];
             }
-            if (length < options.MinimumLengthPixels || points.Count < 3) return;
-            var simple = Clipper.SimplifyPath(points, options.SimplificationMillimeters, closed);
+            if ((!preserveJunctions && length < options.MinimumLengthPixels) || points.Count < 2) return;
+            var simple = Clipper.SimplifyPath(points, Math.Min(options.SimplificationMillimeters, .2 * Math.Min(physicalWidth / width, physicalHeight / height)), closed);
             if (simple.Count < 2) return;
-            if (++paths > 5000 || (segments += simple.Count) > 100000) throw new FormatException("轮廓过多，请降低灵敏度、增加最短轮廓或减小像素上限");
+            if (++paths > 10000 || (segments += simple.Count) > 100000) throw new FormatException("轮廓过多，请降低灵敏度、增加最短轮廓或减小像素上限");
             code.AppendLine(FormattableString.Invariant($"M5\nG0 X{simple[0].x:0.###} Y{simple[0].y:0.###}\nM4 S{settings.Power:0.###}"));
             foreach (var point in simple.Skip(1)) code.AppendLine(FormattableString.Invariant($"G1 X{point.x:0.###} Y{point.y:0.###} F{settings.Feed:0.###}"));
             if (closed && simple[^1] != simple[0]) code.AppendLine(FormattableString.Invariant($"G1 X{simple[0].x:0.###} Y{simple[0].y:0.###} F{settings.Feed:0.###}"));

@@ -39,7 +39,7 @@ public sealed partial class MainActivity
         row = CompactRow(parameters);
         imageMaxWidth = CompactNumber(row, "最大宽 mm", "最大图像宽度 mm", "40", "imageMaxWidth");
         imageMaxHeight = CompactNumber(row, "最大高 mm", "最大图像高度 mm", "40", "imageMaxHeight");
-        contourSensitivity = CompactNumber(row, "轮廓平滑", "轮廓平滑（1–10）", "5", "contourSensitivity");
+        contourSensitivity = CompactNumber(row, "轮廓细节", "轮廓细节（1–10）", "5", "contourSensitivity");
         row = CompactRow(parameters);
         pixelMaxWidth = CompactNumber(row, "像素宽 px", "最大处理宽度 px", "1000", "pixelMaxWidth");
         pixelMaxHeight = CompactNumber(row, "像素高 px", "最大处理高度 px", "1000", "pixelMaxHeight");
@@ -47,6 +47,8 @@ public sealed partial class MainActivity
         row = CompactRow(parameters);
         algorithmButton = Button(row, AlgorithmNames[(int)generationMode], () => { Choices("选择生成方式", AlgorithmNames, index => { generationMode = (GenerationMode)index; algorithmButton.Text = AlgorithmNames[index]; InvalidateDraft(); return Task.CompletedTask; }, (int)generationMode); return Task.CompletedTask; });
         algorithmButton.ContentDescription = "选择生成方式";
+        Button? profile = null;
+        profile = Button(row, OpenCvContours.Name(contourProfile), () => { Choices("轮廓策略", ["智能识别", "照片细节", "图文保真", "局部阈值"], index => { contourProfile = (ContourProfile)index; profile!.Text = OpenCvContours.Name(contourProfile); InvalidateDraft(); return Task.CompletedTask; }, (int)contourProfile); return Task.CompletedTask; }); profile.ContentDescription = "选择轮廓策略";
         row = CompactRow(parameters);
         invert = Check(row, "反色", preferences.GetBoolean("invert", false)); invert.LayoutParameters = new LinearLayout.LayoutParams(0, Dp(48), 1);
         automaticThreshold = Check(row, "自动阈值", preferences.GetBoolean("automaticThreshold", true)); automaticThreshold.LayoutParameters = new LinearLayout.LayoutParams(0, Dp(48), 1);
