@@ -16,6 +16,8 @@
     <ProjectReference Include="../LaserMobile.Persistence/LaserMobile.Persistence.csproj" />
     <ProjectReference Include="../LaserMobile.Cam/LaserMobile.Cam.csproj" />
     <ProjectReference Include="../LaserMobile.Extensions.Xingguang/LaserMobile.Extensions.Xingguang.csproj" />
+    <AndroidAsset Include="../../third-party/notices/*" Link="licenses/%(Filename)%(Extension)" />
+    <AndroidAsset Include="../../THIRD_PARTY_NOTICES.md" Link="licenses/THIRD_PARTY_NOTICES.md" />
     <PackageReference Include="UsbSerialForAndroid" />
     <PackageReference Include="SkiaSharp.Views" />
     <ProjectReference Include="../LaserMobile.Imaging.Skia/LaserMobile.Imaging.Skia.csproj" />

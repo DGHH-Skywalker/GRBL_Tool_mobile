@@ -76,7 +76,7 @@ public sealed class ReliabilityTests
             Assert.False(session.Snapshot.IsArmed);
             await Assert.ThrowsAsync<InvalidOperationException>(() => session.Arm(true));
             await Assert.ThrowsAsync<InvalidOperationException>(() => session.Start(job, Limits, Guid.NewGuid(), session.Snapshot.ControllerEpoch, true));
-            await session.ReadConfiguration(); await Task.Delay(450); await session.Arm(true); Assert.True(session.Snapshot.IsArmed);
+            await session.ReadConfiguration(); await SessionTestReadiness.ConfiguredIdle(session); await session.Arm(true); Assert.True(session.Snapshot.IsArmed);
         });
     }
     [Fact] public async Task SessionRejectsRelativeOvershootAndChangedConfirmationPosition()
@@ -106,7 +106,7 @@ public sealed class ReliabilityTests
             transport.InjectAlarm(); await Wait(() => session.Snapshot.Execution?.State == ExecutionState.Interrupted);
             await Assert.ThrowsAsync<InvalidOperationException>(() => session.ReadConfiguration());
             await session.ResetController(true); await Wait(() => session.Snapshot.Machine == "Idle");
-            await session.ReadConfiguration(); await Task.Delay(450); await session.Arm(true);
+            await session.ReadConfiguration(); await SessionTestReadiness.ConfiguredIdle(session); await session.Arm(true);
             Assert.True(session.Snapshot.IsArmed); Assert.Equal(ExecutionState.Interrupted, store.History()[0].State);
         });
     }
@@ -124,7 +124,7 @@ public sealed class ReliabilityTests
     private static async Task Ready(DeviceSession session)
     {
         await Wait(() => session.Snapshot.Machine == "Idle"); await session.ReadConfiguration();
-        await Task.Delay(450); await session.Arm(true);
+        await SessionTestReadiness.ConfiguredIdle(session); await session.Arm(true);
     }
     private static async Task WithDemo(Func<DeviceSession, DemoTransport, ExecutionStore, JobLibrary, Task> body)
     {

@@ -18,7 +18,7 @@ public sealed class SessionWorkflowTests
             await using(var session=new DeviceSession(transport,store))
             {
                 session.Run();await Wait(()=>session.Snapshot.Machine=="Idle");await session.ReadConfiguration();
-                await Wait(()=>transport.Writes.Contains("$G\n"));await Task.Delay(300); await session.Arm(true);
+                await Wait(()=>transport.Writes.Contains("$G\n"));await SessionTestReadiness.ConfiguredIdle(session); await session.Arm(true);
                 var job=new JobLibrary(Path.Combine(root,"jobs")).Commit("job",GcodeProgram.Prepare(SimulationSession.Sample,new(40,40,1200,1000)).Plan);
                 var command=Guid.NewGuid();var epoch=session.Snapshot.ControllerEpoch;
                 await Assert.ThrowsAsync<InvalidOperationException>(()=>session.Start(job,new(40,40,1200,1000),command,epoch,false));
@@ -40,7 +40,7 @@ public sealed class SessionWorkflowTests
         {
             var transport = new Controller(); var store = new ExecutionStore(Path.Combine(dir, "runs.sqlite"));
             await using var session = new DeviceSession(transport, store); session.Run();
-            await Wait(() => session.Snapshot.Machine == "Idle"); await session.ReadConfiguration(); await Task.Delay(450); await session.Arm(true);
+            await Wait(() => session.Snapshot.Machine == "Idle"); await session.ReadConfiguration(); await SessionTestReadiness.ConfiguredIdle(session); await session.Arm(true);
             transport.SuppressStatus = true; await Task.Delay(100);
             await session.Jog(1, 0, 1, 300);
             await Wait(() =>
@@ -49,7 +49,7 @@ public sealed class SessionWorkflowTests
                 return command >= 0 && log.Skip(command + 1).Any(x => x.StartsWith("< Acknowledgement", StringComparison.Ordinal));
             });
             await Assert.ThrowsAsync<InvalidOperationException>(() => session.Arm(true));
-            transport.EmitIdle(); await Task.Delay(50); await session.Arm(true); Assert.True(session.Snapshot.IsArmed);
+            transport.EmitIdle(); await SessionTestReadiness.ConfiguredIdle(session); await session.Arm(true); Assert.True(session.Snapshot.IsArmed);
         }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
     }
