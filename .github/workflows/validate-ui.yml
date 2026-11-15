@@ -1,0 +1,75 @@
+name: Validate existing APK UI
+on:
+  workflow_dispatch:
+    inputs:
+      app_run:
+        description: Original app run with successful core, native and Android jobs
+        required: true
+        default: '43699057298'
+      app_sha:
+        description: Exact original app source revision
+        required: true
+        default: '75ab08faf94ddf20ef116883e0cc49cbe852403e'
+permissions:
+  contents: read
+  actions: read
+env:
+  APP_RUN: ${{ inputs.app_run }}
+  APP_SHA: ${{ inputs.app_sha }}
+jobs:
+  demo-smoke:
+    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify original app checks and unchanged app source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${{ github.repository }}/actions/runs/$APP_RUN" > app-run.json
+          jq -e --arg sha "$APP_SHA" '.head_sha == $sha and .status == "completed"' app-run.json
+          gh api "repos/${{ github.repository }}/actions/runs/$APP_RUN/jobs" > app-jobs.json
+          jq -e '[.jobs[] | select(.name == "core" or .name == "android" or (.name | startswith("opencv-native")))] | length == 4 and all(.[]; .conclusion == "success")' app-jobs.json
+          gh api "repos/${{ github.repository }}/compare/$APP_SHA...$GITHUB_SHA" > app-diff.json
+          jq -e 'all(.files[]; .filename == "tools/android-smoke/smoke.py" or .filename == ".github/workflows/validate-ui.yml" or .filename == "README.md" or (.filename | startswith("docs/")))' app-diff.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          run-id: ${{ env.APP_RUN }}
+          github-token: ${{ github.token }}
+          path: artifacts/apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-results
+          run-id: ${{ env.APP_RUN }}
+          github-token: ${{ github.token }}
+          path: artifacts/core
+      - name: Check original signed APK bytes
+        run: cd artifacts/apk && sha256sum --check SHA256SUMS.txt
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -memory 3072
+          script: python3 tools/android-smoke/smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: demo-smoke-evidence
+          path: artifacts/demo-smoke
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: android-apk
+          path: artifacts/apk
+          retention-days: 30

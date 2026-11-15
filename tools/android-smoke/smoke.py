@@ -170,7 +170,12 @@ def choose_bitmap(name):
 
 def choose_document(category, name):
     tap("导入作品"); tap(category)
-    wait(name, timeout=40, exact=False); tap(name, exact=False)
+    wait(name, timeout=40, exact=False)
+    # DocumentsUI thumbnail descriptions also contain the name and open ACTION_VIEW previews.
+    # Click the actual filename label to return the document to the requesting application.
+    node = next(n for n in tree().iter("node") if n.get("text") == name)
+    x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds")))
+    adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
 
 
 def leave_system_picker(message):
