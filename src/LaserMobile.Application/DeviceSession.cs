@@ -295,7 +295,10 @@ public sealed class DeviceSession : IAsyncDisposable
     private void Publish()
     {
         Volatile.Write(ref snapshot, new(id, epoch, connection, firmware, machine, position, laserMode, maxPower, sender?.Snapshot, error, ++sequence)
-        { IsArmed = armed, WorkX = wpos?[0], WorkY = wpos?[1], ReceiveBufferBytes = receiveBufferBytes });
+        { IsArmed = armed, CanArm = connection == "Connected" && machine == "Idle" && Now - lastStatus <= TimeSpan.FromSeconds(2)
+            && lastStatus > lastManagementReply && pending is null && management.Count == 0 && sender is not { IsTerminal: false }
+            && configurationComplete && standardFrame && wpos is not null && lastStatus >= configurationCompletedAt,
+            WorkX = wpos?[0], WorkY = wpos?[1], ReceiveBufferBytes = receiveBufferBytes });
     }
     private async Task Fail(string reason)
     {

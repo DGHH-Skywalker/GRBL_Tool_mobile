@@ -23,6 +23,20 @@ public static class ImportFormats
         return Formats.SingleOrDefault(f => f.Extensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
             ?? throw new FormatException("不支持此文件格式。请选择 PNG、JPG、WebP、BMP、SVG 或 G-code 文件");
     }
+    public static string PhotoName(string? displayName, string? mimeType)
+    {
+        string name = string.IsNullOrWhiteSpace(displayName) ? "photo" : displayName;
+        if (string.IsNullOrEmpty(Path.GetExtension(name)))
+        {
+            string extension = mimeType?.Split(';')[0].Trim().ToLowerInvariant() switch
+            {
+                "image/png" => ".png", "image/jpeg" => ".jpg", "image/webp" => ".webp",
+                "image/bmp" or "image/x-ms-bmp" => ".bmp", _ => throw new FormatException("相册图片需为 PNG、JPG、WebP 或 BMP 格式")
+            };
+            name += extension;
+        }
+        CheckMetadata(name, mimeType, ImportKind.Bitmap); return name;
+    }
     public static ImportFormat CheckMetadata(string name, string? mimeType, ImportKind expected)
     {
         var format = ForName(name);

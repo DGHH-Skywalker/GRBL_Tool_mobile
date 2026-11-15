@@ -31,7 +31,7 @@ public sealed partial class MainActivity : Activity
     private ToolpathPreview? preview;
     private TextView jobSummary = null!;
     private ProgressBar jobProgress = null!;
-    private Button startButton = null!, frameButton = null!, pauseButton = null!, resumeButton = null!, cancelButton = null!;
+    private Button importButton = null!, startButton = null!, frameButton = null!, pauseButton = null!, resumeButton = null!, cancelButton = null!;
     private TextView status = null!, details = null!, artwork = null!;
     private EditText baud = null!, areaWidth = null!, areaHeight = null!, maxFeed = null!, maxPower = null!, artWidth = null!, spacing = null!, feed = null!, power = null!, gamma = null!, jogStep = null!, cropLeft = null!, cropTop = null!, cropRight = null!, cropBottom = null!;
     private int quarterTurns;
@@ -111,13 +111,18 @@ public sealed partial class MainActivity : Activity
     }
     private async Task RestoreSaved(Guid id)
     {
+        long generation = artworkLoadGeneration + 1;
         try { await LoadSaved(id); }
-        catch (Exception e) when (e is IOException or FormatException or ArgumentException or System.Text.Json.JsonException) { selected = null; InvalidateDraft(); }
+        catch (Exception e) when (e is IOException or FormatException or ArgumentException or System.Text.Json.JsonException)
+        { if (generation == artworkLoadGeneration) { selected = null; InvalidateDraft(); } }
     }
+    private long artworkLoadGeneration;
     private async Task LoadSaved(Guid id)
     {
+        long generation = ++artworkLoadGeneration, revision = draft.Revision;
         var job = await Task.Run(() => library.Read(id)); var limits = job.Limits ?? Limits();
         var result = await Task.Run(() => GcodeProgram.Prepare(job.Content, limits));
+        if (IsDestroyed || generation != artworkLoadGeneration || revision != draft.Revision) return;
         areaWidth.Text = limits.Width.ToString(CultureInfo.InvariantCulture); areaHeight.Text = limits.Height.ToString(CultureInfo.InvariantCulture);
         maxFeed.Text = limits.MaxFeed.ToString(CultureInfo.InvariantCulture); maxPower.Text = limits.MaxPower.ToString(CultureInfo.InvariantCulture);
         source = Encoding.ASCII.GetBytes(job.Content); sourceName = Path.ChangeExtension(job.Name, ".nc"); quarterTurns = 0;
@@ -127,6 +132,7 @@ public sealed partial class MainActivity : Activity
     }
     private async Task StartDemo()
     {
+        if (importing || converting) throw new InvalidOperationException("请先完成或取消作品处理");
         if (DeviceExecutionService.Current?.Session is not null) throw new InvalidOperationException("请先断开 USB 设备");
         if (SimulationService.Current is not null)
         {
@@ -137,7 +143,9 @@ public sealed partial class MainActivity : Activity
         if (OperatingSystem.IsAndroidVersionAtLeast(33) && CheckSelfPermission(Android.Manifest.Permission.PostNotifications) != Android.Content.PM.Permission.Granted) RequestPermissions([Android.Manifest.Permission.PostNotifications], 100);
         using var intent = new Intent(this, typeof(SimulationService)); StartForegroundService(intent);
         for (int i = 0; i < 100 && SimulationService.Current?.Session?.Snapshot.Machine != "Idle"; i++) await Task.Delay(50);
-        var session = Session(); await session.ReadConfiguration(); await Task.Delay(450); await session.Arm(true);
+        var session = Session(); await session.ReadConfiguration();
+        for (int i = 0; i < 100 && !session.Snapshot.CanArm; i++) await Task.Delay(50);
+        await session.Arm(true);
         areaWidth.Text = "40"; areaHeight.Text = "40"; maxFeed.Text = "1200"; maxPower.Text = "1000";
         var sample = new StringBuilder("G21 G90 G54 G17 G94\nM5\nG0 X5 Y5\nM4 S100\n");
         for (int i = 0; i < 96; i++) sample.Append(FormattableString.Invariant($"G1 X{(i % 2 == 0 ? 25 : 5)} Y{5 + i * .2:0.#} F600\n"));
@@ -148,7 +156,8 @@ public sealed partial class MainActivity : Activity
     private JobLimits Limits() { var l = new JobLimits(Value(areaWidth), Value(areaHeight), Value(maxFeed), Value(maxPower)); l.Validate(); return l; }
     private async Task Prepare()
     {
-        if (source is null || converting) return;
+        if (source is null) throw new InvalidOperationException("请先导入作品");
+        if (converting) throw new InvalidOperationException("任务正在生成，请先取消当前生成");
         var data = source; var name = sourceName; var limits = Limits(); var revision = draft.Revision;
         bool image = IsArtwork(name);
         var rasterMode = generationMode switch
@@ -218,32 +227,44 @@ public sealed partial class MainActivity : Activity
             (float)prepared.MinX + (e.Info.Width - 20 - panX) / scale, (float)prepared.MinY + (e.Info.Height - 20 + panY) / scale);
         preview?.Draw(c, viewport, scale, showTravel.Checked);
     }
-    protected override void OnResume() { base.OnResume(); visible = true; Refresh(); }
+    protected override void OnResume()
+    {
+        base.OnResume(); visible = true; handler.RemoveCallbacksAndMessages(null);
+        if (PanelVisible && appPanel.GetChildAt(0) is { } panel) ResetMotion(panel);
+        else { appPanel.Visibility = ViewStates.Gone; appPanel.Clickable = false; ResetMotion(pages[currentPage]); }
+        Refresh();
+    }
     protected override void OnPause()
     {
         visible = false; handler.RemoveCallbacksAndMessages(null);
         using var edit = preferences.Edit(); foreach (var input in savedInputs) edit!.PutString(input.Tag?.ToString() ?? "", input.Text); edit!.PutInt("generationMode", (int)generationMode); edit.PutInt("contourProfile", (int)contourProfile); edit.PutBoolean("showTravel", showTravel.Checked); edit.PutBoolean("automaticThreshold", automaticThreshold.Checked); edit.PutBoolean("invert", invert.Checked); edit.PutString("selectedJob", draft.IsCurrent ? selected?.Id.ToString() ?? "" : ""); edit.Apply(); base.OnPause();
     }
-    protected override void OnDestroy() { ClosePanel(); conversion?.Cancel(); preview?.Dispose(); foreach (var icon in navigationIcons) icon?.Dispose(); base.OnDestroy(); }
+    protected override void OnDestroy() { visible = false; handler.RemoveCallbacksAndMessages(null); ClosePanel(); conversion?.Cancel(); preview?.Dispose(); foreach (var icon in navigationIcons) icon?.Dispose(); base.OnDestroy(); }
     private static void SetLabel(TextView view, string text) { if (view.Text != text) view.Text = text; }
+    private void UpdateActionAvailability()
+    {
+        var snapshot = CurrentSession()?.Snapshot;
+        var execution = snapshot?.Execution; bool active = SessionMonitor.Active(execution?.State);
+        bool ready = selected is not null && draft.IsCurrent && !converting && !importing && pendingImport is null && !active && snapshot is { Connection: "Connected", Machine: "Idle", IsArmed: true };
+        SetActionEnabled(startButton, ready && confirmed.Checked); SetActionEnabled(frameButton, ready && confirmed.Checked);
+        if (snapshot?.IsArmed != true) confirmed.Checked = false;
+        confirmed.Enabled = ready;
+        SetActionEnabled(pauseButton, execution?.State is ExecutionState.Running or ExecutionState.Draining);
+        SetActionEnabled(resumeButton, execution?.State == ExecutionState.Paused);
+        SetActionEnabled(cancelButton, active && execution?.State != ExecutionState.Cancelling);
+        SetActionEnabled(importButton, !importing);
+        SetActionEnabled(generateButton, source is not null && !importing && pendingImport is null);
+    }
     private void Refresh()
     {
         if (!visible) return;
-        var snapshot = CurrentSession()?.Snapshot; RefreshStatus();
-        var execution = snapshot?.Execution; bool active = SessionMonitor.Active(execution?.State);
-        bool ready = selected is not null && draft.IsCurrent && !converting && !active && snapshot is { Connection: "Connected", Machine: "Idle", IsArmed: true };
-        startButton.Enabled = ready && confirmed.Checked; frameButton.Enabled = ready && confirmed.Checked;
-        if (snapshot?.IsArmed != true) confirmed.Checked = false;
-        confirmed.Enabled = ready;
-        pauseButton.Enabled = execution?.State is ExecutionState.Running or ExecutionState.Draining;
-        resumeButton.Enabled = execution?.State == ExecutionState.Paused;
-        cancelButton.Enabled = active && execution?.State != ExecutionState.Cancelling;
+        UpdateActionAvailability(); var snapshot = CurrentSession()?.Snapshot; RefreshStatus();
+        var execution = snapshot?.Execution;
         jobProgress.Progress = execution is { TotalLines: > 0 } ? execution.AcknowledgedLines * 1000 / execution.TotalLines : 0;
         SetLabel(jobSummary, selected is null ? "先导入作品并生成任务" : draft.IsCurrent ? Description() : "输入已变化，请重新生成任务");
         SetLabel(executionText, execution is null ? "等待开始" : $"{StateName(execution.State)} · 确认 {execution.AcknowledgedLines}/{execution.TotalLines} 行" + (execution.Error is null ? "" : "\n" + execution.Error));
         if (snapshot is not null) SetLabel(details, $"{snapshot.Firmware}\n{snapshot.Position}\n$30={snapshot.MaxPower?.ToString() ?? "未知"} · {(snapshot.LaserMode ? "激光模式" : "普通模式")}");
         SetLabel(positionText, snapshot?.Position ?? "连接设备后显示工作坐标");
-        generateButton.Enabled = source is not null && !importing;
         generateButton.Text = converting ? "取消生成" : "生成任务"; generateButton.ContentDescription = generateButton.Text;
         if (previewHint is not null) previewHint.Visibility = prepared is null ? ViewStates.Visible : ViewStates.Gone;
         handler.PostDelayed(Refresh, 250);

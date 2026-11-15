@@ -14,12 +14,13 @@ public sealed partial class MainActivity
     private Action? panelCancelled;
     private Android.Window.IOnBackInvokedCallback? panelBack;
     private int currentPage;
+    private long panelRevision;
     private bool PanelVisible => appPanel is not null && appPanel.Visibility == ViewStates.Visible;
     private LinearLayout OpenPanel(string title, Action? cancelled = null)
     {
         ClosePanel(); HideKeyboard(); panelCancelled = cancelled;
         foreach (var page in pages) { ResetMotion(page); page.Visibility = ViewStates.Gone; }
-        appPanel.RemoveAllViews(); appPanel.Visibility = ViewStates.Visible;
+        appPanel.RemoveAllViews(); appPanel.Clickable = true; appPanel.Visibility = ViewStates.Visible;
         var screen = new LinearLayout(this) { Orientation = Orientation.Vertical, Clickable = true };
         screen.SetPadding(Dp(12), Dp(8), Dp(12), Dp(8)); screen.Background = Surface(Dark ? "#172130" : "#FFFFFF");
         appPanel.AddView(screen, new FrameLayout.LayoutParams(-1, -1));
@@ -36,7 +37,15 @@ public sealed partial class MainActivity
         var cancelled = panelCancelled; panelCancelled = null;
         if (OperatingSystem.IsAndroidVersionAtLeast(33) && panelBack is not null) OnBackInvokedDispatcher!.UnregisterOnBackInvokedCallback(panelBack);
         (panelBack as IDisposable)?.Dispose(); panelBack = null;
-        if (PanelVisible) { appPanel.Visibility = ViewStates.Gone; appPanel.RemoveAllViews(); for (int i = 0; i < pages.Count; i++) { ResetMotion(pages[i]); pages[i].Visibility = i == currentPage ? ViewStates.Visible : ViewStates.Gone; } Reveal(pages[currentPage]); }
+        bool wasVisible = PanelVisible; panelRevision++;
+        if (appPanel is not null)
+        {
+            appPanel.Clickable = false; appPanel.Visibility = ViewStates.Gone;
+            if (appPanel.GetChildAt(0) is { } child) ResetMotion(child);
+            appPanel.RemoveAllViews();
+        }
+        if (wasVisible) { for (int i = 0; i < pages.Count; i++) { ResetMotion(pages[i]); pages[i].Visibility = i == currentPage ? ViewStates.Visible : ViewStates.Gone; } Reveal(pages[currentPage]); }
+
         cancelled?.Invoke();
     }
     private sealed class PanelBack(Action action) : Java.Lang.Object, Android.Window.IOnBackInvokedCallback { public void OnBackInvoked() => action(); }
@@ -55,30 +64,32 @@ public sealed partial class MainActivity
     }
     private void Choices(string title, IReadOnlyList<string> options, Func<int, Task> choose, int selected = -1)
     {
-        var screen = OpenPanel(title); var list = new LinearLayout(this) { Orientation = Orientation.Vertical }; screen.AddView(list, new LinearLayout.LayoutParams(-1, 0, 1));
+        var screen = OpenPanel(title); long revision = panelRevision; var list = new LinearLayout(this) { Orientation = Orientation.Vertical }; screen.AddView(list, new LinearLayout.LayoutParams(-1, 0, 1));
         int page = 0, pageSize = 12; int columns = options.Count > 6 ? 2 : 1;
         Button previous = null!, next = null!;
         var navigation = Row(screen); navigation.Visibility = ViewStates.Gone;
         previous = Button(navigation, "上一页", () => { page--; Render(); return Task.CompletedTask; });
         next = Button(navigation, "下一页", () => { page++; Render(); return Task.CompletedTask; });
         Button(screen, "返回", () => { ClosePanel(); return Task.CompletedTask; });
+        var rows = new List<LinearLayout>();
+        for (int i = 0; i < options.Count; i++)
+        {
+            if (i % columns == 0) rows.Add(Row(list));
+            int index = i;
+            var choice = Button(rows[^1], (index == selected ? "✓ " : "") + options[i], async () => { if (revision != panelRevision) return; ClosePanel(); await choose(index); });
+            choice.ContentDescription = options[i]; choice.TextSize = columns > 1 ? 11 : 13; StyleButton(choice, index == selected);
+        }
         void Render()
         {
             page = Math.Clamp(page, 0, Math.Max(0, (options.Count - 1) / pageSize));
-            list.RemoveAllViews(); LinearLayout row = list;
-            for (int i = page * pageSize; i < Math.Min(options.Count, (page + 1) * pageSize); i++)
-            {
-                if (columns > 1 && i % columns == 0) row = Row(list);
-                int index = i; var choice = Button(row, (index == selected ? "✓ " : "") + options[i], async () => { ClosePanel(); await choose(index); });
-                choice.ContentDescription = options[i]; choice.TextSize = columns > 1 ? 11 : 13; StyleButton(choice, index == selected);
-            }
+            for (int i = 0; i < rows.Count; i++) rows[i].Visibility = i * columns >= page * pageSize && i * columns < (page + 1) * pageSize ? ViewStates.Visible : ViewStates.Gone;
             previous.Visibility = page == 0 ? ViewStates.Invisible : ViewStates.Visible;
             next.Visibility = (page + 1) * pageSize >= options.Count ? ViewStates.Invisible : ViewStates.Visible;
         }
         void Reflow()
         {
-            if (list.Height <= 0) return;
-            var first = list.GetChildAt(0); int itemHeight = first?.Height ?? 0;
+            if (IsDestroyed || revision != panelRevision || list.Height <= 0) return;
+            var first = rows.FirstOrDefault(row => row.Visibility == ViewStates.Visible); int itemHeight = first?.Height ?? 0;
             if (first?.LayoutParameters is ViewGroup.MarginLayoutParams margin) itemHeight += margin.TopMargin + margin.BottomMargin;
             if (itemHeight <= 0) itemHeight = Dp(54);
             int fullHeight = list.Height + (navigation.Visibility == ViewStates.Visible ? navigation.Height : 0);
@@ -137,11 +148,13 @@ public sealed partial class MainActivity
     }
 
     private void ShowMessage(string title, string message) => ShowPagedText(title, message);
-    private void ShowError(string message)
+    private void ShowError(string message) => ShowNotice(message, true);
+    private void ShowInfo(string message) => ShowNotice(message, false);
+    private void ShowNotice(string message, bool error)
     {
         if (IsDestroyed) return;
         notice = message; noticeClose.Visibility = ViewStates.Visible;
-        statusBar.Background = Surface(Dark ? "#3B301E" : "#FFF1D6");
+        statusBar.Background = Surface(error ? (Dark ? "#3B301E" : "#FFF1D6") : (Dark ? "#1C2C43" : "#E7F0FF"));
         RefreshStatus(); Reveal(statusBar);
     }
     private void ClearNotice()

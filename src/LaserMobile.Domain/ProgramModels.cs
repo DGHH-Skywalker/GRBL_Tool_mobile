@@ -15,6 +15,7 @@ public sealed record WorkPosition(double X, double Y);
 public sealed record SessionSnapshot(Guid SessionId, long ControllerEpoch, string Connection, string Firmware, string Machine, string Position, bool LaserMode, double? MaxPower, ExecutionSnapshot? Execution, string? Error, long Sequence)
 {
     public bool IsArmed { get; init; }
+    public bool CanArm { get; init; }
     public double? WorkX { get; init; }
     public double? WorkY { get; init; }
     public int? ReceiveBufferBytes { get; init; }

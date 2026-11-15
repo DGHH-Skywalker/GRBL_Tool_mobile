@@ -14,7 +14,7 @@ internal static class SessionTestReadiness
             int modes = Array.FindLastIndex(log, line => line == "> $G");
             int ack = Array.FindLastIndex(log, line => line.StartsWith("< Acknowledgement", StringComparison.Ordinal));
             int idle = Array.FindLastIndex(log, line => line.StartsWith("< Status { State = Idle", StringComparison.Ordinal));
-            if (identity >= 0 && modes > identity && ack > modes && idle > ack && session.Snapshot.WorkX is not null) return;
+            if (identity >= 0 && modes > identity && ack > modes && idle > ack && session.Snapshot.WorkX is not null && session.Snapshot.CanArm) return;
             await Task.Delay(20);
         }
         Assert.Fail("Configuration ACK and a subsequent Idle with coordinates were not observed.\n" + string.Join('\n', session.Log));

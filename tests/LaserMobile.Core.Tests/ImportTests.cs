@@ -24,6 +24,20 @@ public sealed class ImportTests
         Assert.Throws<FormatException>(() => ImportFormats.CheckMetadata("a.png", "application/pdf", ImportKind.Bitmap));
         Assert.Throws<FormatException>(() => ImportFormats.CheckMetadata("a.json", "application/json", ImportKind.Gcode));
     }
+    [Theory]
+    [InlineData(null, "image/jpeg", "photo.jpg")]
+    [InlineData("12345", "image/png", "12345.png")]
+    [InlineData("original.WebP", "image/webp", "original.WebP")]
+    public void AlbumMetadataCanOmitTheFilenameExtension(string? name, string mime, string expected)
+        => Assert.Equal(expected, ImportFormats.PhotoName(name, mime));
+    [Fact] public void AlbumMetadataStillEnforcesFormatsAndContent()
+    {
+        Assert.Throws<FormatException>(() => ImportFormats.PhotoName(null, "image/gif"));
+        Assert.Throws<FormatException>(() => ImportFormats.PhotoName("a.heic", "image/heic"));
+        Assert.Throws<FormatException>(() => ImportFormats.PhotoName("a.png", "image/jpeg"));
+        Assert.Throws<FormatException>(() => ImportFormats.PhotoName("../123", "image/png"));
+        Assert.Throws<FormatException>(() => ImportValidator.Validate("%PDF-1.7"u8.ToArray(), ImportFormats.PhotoName("123", "image/png"), "image/png", ImportKind.Bitmap));
+    }
     [Fact] public void EncodedImageMustMatchNameAndDecodeCompletely()
     {
         using var bitmap = new SKBitmap(8, 8); using (var canvas = new SKCanvas(bitmap)) canvas.Clear(SKColors.Black);

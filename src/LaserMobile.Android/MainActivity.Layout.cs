@@ -41,7 +41,12 @@ public sealed partial class MainActivity
         library = new JobLibrary(Path.Combine(FilesDir!.AbsolutePath, "jobs"));
         executions = new ExecutionStore(Path.Combine(FilesDir.AbsolutePath, "executions.sqlite"));
         if (DeviceExecutionService.Current is null && SimulationService.Current is null) executions.RecoverInterrupted();
-        if (savedInstanceState?.ContainsKey("pendingImport") == true) pendingImport = (ImportKind)savedInstanceState.GetInt("pendingImport");
+        if (savedInstanceState?.ContainsKey("pendingImport") == true)
+        { pendingImport = (ImportKind)savedInstanceState.GetInt("pendingImport"); pendingImportRequest = savedInstanceState.GetInt("pendingImportRequest"); }
+        nextImportRequest = savedInstanceState?.GetInt("nextImportRequest", 200) ?? 200;
+        if (savedInstanceState?.GetString("pendingExport") is { } file && file == Path.GetFileName(file) && file.StartsWith("export-", StringComparison.Ordinal) && file.EndsWith(".txt", StringComparison.Ordinal))
+        { pendingExportFile = Path.Combine(CacheDir!.AbsolutePath, file); pendingExportName = savedInstanceState.GetString("pendingExportName"); }
+        quarterTurns = Math.Clamp(savedInstanceState?.GetInt("quarterTurns", 0) ?? 0, 0, 3);
         root = new LinearLayout(this) { Orientation = Orientation.Vertical, FocusableInTouchMode = true };
         root.SetPadding(Dp(8), Dp(28), Dp(8), Dp(8));
         root.SetBackgroundColor(Android.Graphics.Color.ParseColor(Dark ? "#101722" : "#F3F6FB"));
@@ -77,7 +82,7 @@ public sealed partial class MainActivity
             button.SetCompoundDrawables(null, icon, null, null); button.CompoundDrawablePadding = Dp(2); button.TextSize = 11; button.SetMinHeight(Dp(56)); navigation.Add(button);
         }
         root.SetOnApplyWindowInsetsListener(new AppInsets(this)); root.RequestApplyInsets();
-        ShowPage(0); root.RequestFocus();
+        ShowPage(Math.Clamp(savedInstanceState?.GetInt("currentPage", 0) ?? 0, 0, 3)); root.RequestFocus();
         if (Guid.TryParse(preferences.GetString("selectedJob", ""), out var savedId)) _ = RestoreSaved(savedId);
     }
     private sealed class AppInsets(MainActivity activity) : Java.Lang.Object, View.IOnApplyWindowInsetsListener
@@ -127,7 +132,9 @@ public sealed partial class MainActivity
         var box = new CheckBox(this) { Text = title, Checked = value, TextSize = 13, ContentDescription = title }; box.SetMinHeight(Dp(48)); box.SetMaxLines(2);
         box.CheckedChange += (_, _) => { if (!ReferenceEquals(box, confirmed) && !ReferenceEquals(box, showTravel)) InvalidateDraft(); }; parent.AddView(box); return box;
     }
-    private Button Button(LinearLayout parent, string text, Func<Task> action)
+    private readonly HashSet<Button> runningActions = [];
+    private void SetActionEnabled(Button button, bool enabled) => button.Enabled = enabled && !runningActions.Contains(button);
+    private Button Button(LinearLayout parent, string text, Func<Task> action, bool lockWhileRunning = true)
     {
         var button = new Button(this) { Text = text, ContentDescription = text, TextSize = 13, Ellipsize = TextUtils.TruncateAt.End }; button.SetMaxLines(1);
         StyleButton(button, text is "体验完整演示" or "开始加工" or "生成任务" or "授权并连接"); button.SetMinHeight(Dp(48));
@@ -135,10 +142,25 @@ public sealed partial class MainActivity
         layout.SetMargins(Dp(2), Dp(3), Dp(2), Dp(3)); parent.AddView(button, layout);
         button.Click += async (_, _) =>
         {
-            button.Enabled = false;
-            try { await action(); }
-            catch (Exception e) { ShowError(e.Message); }
-            finally { if (!IsDestroyed) button.Enabled = true; }
+            if (IsDestroyed || (lockWhileRunning && !runningActions.Add(button))) return;
+            string original = button.Text ?? text;
+            if (lockWhileRunning) button.Enabled = false;
+            try
+            {
+                var task = action();
+                if (lockWhileRunning && !task.IsCompleted) button.Text = "处理中…";
+                await task;
+            }
+            catch (Exception e) { if (!IsDestroyed) ShowError(e.Message); }
+            finally
+            {
+                if (lockWhileRunning) runningActions.Remove(button);
+                if (!IsDestroyed)
+                {
+                    if (button.Text == "处理中…") button.Text = original;
+                    button.Enabled = true; UpdateActionAvailability();
+                }
+            }
         };
         return button;
     }
@@ -195,15 +217,15 @@ public sealed partial class MainActivity
         row = Row(parts[2]); var usbSettings = ReadUsbSettings();
         dtrButton = Button(row, "DTR · " + LineName(usbSettings.Dtr), () => { ChooseLine(true); return Task.CompletedTask; }); dtrButton.ContentDescription = "设置 DTR";
         rtsButton = Button(row, "RTS · " + LineName(usbSettings.Rts), () => { ChooseLine(false); return Task.CompletedTask; }); rtsButton.ContentDescription = "设置 RTS";
-        Button(parts[2], "导入设备配置 JSON", () => { OpenPicker(ImportKind.DeviceProfile); return Task.CompletedTask; });
+        Button(parts[2], "导入设备配置 JSON", () => OpenPicker(ImportKind.DeviceProfile));
         p = parts[3]; Label(p, "设备维护", 12, 1);
         row = Row(p); Button(row, "硬件回零", async () => { if (await Ask("回零", "确认回零开关、方向与设备 $22=1 配置？")) await Session().Home(true); }); Button(row, "报警解锁", async () => { if (await Ask("解锁", "确认已处理报警原因并检查位置？")) await Session().Unlock(true); });
         row = Row(p); Button(row, "选择工作模式", () => Session().SelectStandardFrame()); Button(row, "软件复位", async () => { if (await Ask("软件复位", "清除控制器队列并重新读取配置？")) await Session().ResetController(true); });
         Label(p, "演示与诊断", 12, 1);
         row = Row(p); Button(row, "模拟报警", () => { Demo().InjectAlarm(); return Task.CompletedTask; }); Button(row, "模拟复位", () => { Demo().InjectReset(); return Task.CompletedTask; });
         row = Row(p); Button(row, "模拟断线", () => { Demo().InjectDisconnect(); return Task.CompletedTask; }); Button(row, "协议日志", () => { ShowPagedText("协议日志", string.Join('\n', Session().Log)); return Task.CompletedTask; });
-        row = Row(p); Button(row, "导出日志", () => { ExportDocument(22, "grbl-diagnostics.txt"); return Task.CompletedTask; });
-        Button(row, "关于", () => { ShowPagedText("GRBL Tool Mobile 0.7.0", "GPL-3.0-or-later\nOpenCV / OpenCvSharp / Sdcb：Apache-2.0\nUSBSerialForAndroid / SkiaSharp / Svg.Skia：MIT\nClipper2：Boost-1.0\nCyotek 抖动：MIT\n源码 github.com/DGHH-Skywalker/GRBL_Tool_mobile"); return Task.CompletedTask; });
+        row = Row(p); Button(row, "导出日志", () => ExportDocument(22, "grbl-diagnostics.txt"));
+        Button(row, "关于", () => { ShowPagedText("GRBL Tool Mobile 0.7.1", "GPL-3.0-or-later\nOpenCV / OpenCvSharp / Sdcb：Apache-2.0\nUSBSerialForAndroid / SkiaSharp / Svg.Skia：MIT\nClipper2：Boost-1.0\nCyotek 抖动：MIT\n源码 github.com/DGHH-Skywalker/GRBL_Tool_mobile"); return Task.CompletedTask; });
     }
     private async Task ArmDevice() { if (await Ask("设备就绪", "确认设备配置、工作原点与工作区域？")) await Session().Arm(true); }
     private async Task DisconnectDevice()
@@ -218,10 +240,10 @@ public sealed partial class MainActivity
         canvas = new SKCanvasView(this) { ContentDescription = "加工路径预览" }; frame.AddView(canvas, new FrameLayout.LayoutParams(-1, -1));
         previewHint = new TextView(this) { Text = "路径预览\n导入后生成任务", TextSize = 16, Gravity = GravityFlags.Center }; previewHint.SetTextColor(TextColor); frame.AddView(previewHint, new FrameLayout.LayoutParams(-1, -1));
         canvas.PaintSurface += (_, e) => DrawPreview(e); WirePreviewTouch();
-        var row = Row(p); Button(row, "导入作品", ChooseImport); Button(row, "适合屏幕", () => { zoom = 1; panX = panY = 0; canvas.Invalidate(); return Task.CompletedTask; });
+        var row = Row(p); importButton = Button(row, "导入作品", ChooseImport); Button(row, "适合屏幕", () => { zoom = 1; panX = panY = 0; canvas.Invalidate(); return Task.CompletedTask; });
         showTravel = Check(row, "显示空移", preferences.GetBoolean("showTravel", false)); showTravel.TextSize = 11; showTravel.LayoutParameters = new LinearLayout.LayoutParams(0, Dp(48), 1);
         showTravel.CheckedChange += (_, _) => { canvas.Invalidate(); jobCanvas?.Invalidate(); };
-        row = Row(p); generateButton = Button(row, "生成任务", async () => { if (converting) conversion?.Cancel(); else await Prepare(); }); Button(row, "去加工", () => { ShowPage(2); return Task.CompletedTask; });
+        row = Row(p); generateButton = Button(row, "生成任务", async () => { if (converting) conversion?.Cancel(); else await Prepare(); }, lockWhileRunning: false); Button(row, "去加工", () => { ShowPage(2); return Task.CompletedTask; });
         BuildArtworkForms(parts[1], parts[2]);
     }
     private void WirePreviewTouch()
@@ -262,7 +284,7 @@ public sealed partial class MainActivity
         var parts = Tabs(pages[3], ["任务库", "执行记录"], out _);
         libraryCards = new LinearLayout(this) { Orientation = Orientation.Vertical }; parts[0].AddView(libraryCards, new LinearLayout.LayoutParams(-1, 0, 1));
         var row = Row(parts[0]); libraryPager = row; libraryPrevious = Button(row, "上一页", () => { libraryIndex = Math.Max(0, libraryIndex - 1); RenderHistory(); return Task.CompletedTask; }); libraryPage = Label(row, "1/1", 12, 1); libraryNext = Button(row, "下一页", () => { libraryIndex++; RenderHistory(); return Task.CompletedTask; });
-        row = Row(parts[0]); Button(row, "导出任务", () => { if (selected is null) throw new InvalidOperationException("请先选择任务"); ExportDocument(21, selected.Name + ".nc"); return Task.CompletedTask; });
+        row = Row(parts[0]); Button(row, "导出任务", () => { if (selected is null) throw new InvalidOperationException("请先选择任务"); return ExportDocument(21, Path.ChangeExtension(selected.Name, ".nc")); });
         Button(row, "删除所选", async () =>
         {
             if (selected is null) throw new InvalidOperationException("请先选择任务");
@@ -351,5 +373,10 @@ public sealed partial class MainActivity
         });
     }
     protected override void OnSaveInstanceState(Bundle outState)
-    { if (pendingImport is { } kind) outState.PutInt("pendingImport", (int)kind); base.OnSaveInstanceState(outState); }
+    {
+        if (pendingImport is { } kind) { outState.PutInt("pendingImport", (int)kind); outState.PutInt("pendingImportRequest", pendingImportRequest); }
+        outState.PutInt("nextImportRequest", nextImportRequest);
+        if (pendingExportFile is { } file) { outState.PutString("pendingExport", Path.GetFileName(file)); outState.PutString("pendingExportName", pendingExportName); }
+        outState.PutInt("currentPage", currentPage); outState.PutInt("quarterTurns", quarterTurns); base.OnSaveInstanceState(outState);
+    }
 }

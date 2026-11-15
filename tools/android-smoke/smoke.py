@@ -6,6 +6,7 @@ import time
 import struct
 import zlib
 import shutil
+import base64
 import xml.etree.ElementTree as ET
 
 APP = "io.github.dghhskywalker.grbltoolmobile"
@@ -115,23 +116,71 @@ def fixture_files():
     (directory / "unsupported.pdf").write_bytes(b"%PDF-1.7 unsupported")
     for name in ("source-photo.png", "source-qr.png"):
         shutil.copyfile(pathlib.Path("artifacts/core/contours") / name, directory / name)
+    (directory / "unsupported.gif").write_bytes(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"))
+    (directory / "fake.svg").write_bytes(b"%PDF-1.7 disguised SVG")
+    (directory / "fixture.nc").write_text("G21 G90\nM5\nG0 X0 Y0\nM4 S100\nG1 X1 Y1 F300\nM5\n")
     for path in directory.iterdir():
+        if path.suffix in (".png", ".gif"): continue
         adb("push", str(path), "/sdcard/Download/" + path.name)
         adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", "file:///sdcard/Download/" + path.name)
 
 
-def choose_bitmap(name):
+def stage_album(name):
+    # One test photo at a time: Android Photo Picker exposes dates instead of filenames.
+    adb("shell", "content", "delete", "--uri", "content://media/external/images/media", "--where", "relative_path='Pictures/GRBLTest/'")
+    adb("shell", "mkdir", "-p", "/sdcard/Pictures/GRBLTest")
+    adb("push", str(OUT / "fixtures" / name), "/sdcard/Pictures/GRBLTest/" + name)
+    adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", "file:///sdcard/Pictures/GRBLTest/" + name)
+    for _ in range(40):
+        result = adb("shell", "content", "query", "--uri", "content://media/external/images/media", "--projection", "_display_name", "--where", "relative_path='Pictures/GRBLTest/'").decode()
+        if name in result: return
+        time.sleep(.25)
+    raise AssertionError("Album fixture was not indexed: " + name + " " + result)
+
+
+def open_album():
     tap("导入作品")
     tap("位图 · PNG / JPG / WebP / BMP")
-    # Image-grid documents expose filename plus metadata as content-desc.
-    wait(name, timeout=40, exact=False)
-    excluded = find("unsupported.pdf")
-    if excluded is not None:
-        assert excluded.get("enabled") == "false", "Unsupported PDF is enabled by the bitmap picker"
-    tap(name, exact=False)
+    end = time.monotonic() + 40
+    while time.monotonic() < end:
+        nodes = list(tree().iter("node"))
+        assert not any("documentsui" in n.get("package", "") for n in nodes), "Bitmap opened DocumentsUI instead of the system photo picker"
+        tiles = [n for n in nodes if n.get("resource-id", "").endswith("/icon_thumbnail") or "photo taken" in n.get("content-desc", "").lower()]
+        if tiles:
+            screenshot("album-picker")
+            return tiles[0]
+        time.sleep(.3)
+    raise AssertionError("System photo picker thumbnail not found")
+
+
+def choose_bitmap(name):
+    stage_album(name)
+    node = open_album()
+    x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds")))
+    adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+    time.sleep(.7)
+    nodes = list(tree().iter("node"))
+    if not any(n.get("package") == APP for n in nodes):
+        for title in ("Add", "Select", "Done"):
+            found = next((n for n in nodes if n.get("text") == title and n.get("enabled") == "true"), None)
+            if found is not None:
+                tap(title); break
+
+
+def choose_document(category, name):
+    tap("导入作品"); tap(category)
+    wait(name, timeout=40, exact=False); tap(name, exact=False)
+
+
+def cancel_system_picker():
+    adb("shell", "input", "keyevent", "4")
+    wait("已取消导入")
+    assert find("导入作品").get("enabled") == "true"
+
 
 
 def screenshot(name):
+    print("UI checkpoint:", name, flush=True)
     (OUT / f"{name}.png").write_bytes(adb("exec-out", "screencap", "-p"))
     try:
         (OUT / f"{name}.xml").write_bytes(adb("shell", "cat", "/sdcard/grbl-window.xml"))
@@ -177,6 +226,13 @@ try:
     wait("RTS · 拉低")
     screenshot("01d-configurable-control-lines")
     tap("连接")
+    tap("作品")
+    for _ in range(3):
+        tap("导入作品"); wait("矢量 · SVG"); tap("返回")
+        assert find("导入作品").get("enabled") == "true"
+    tap("导入作品"); wait("矢量 · SVG"); adb("shell", "input", "keyevent", "4")
+    wait("导入作品", exact=True)
+    tap("设备")
     tap("体验完整演示")
     wait("GRBL-demo.nc")
     no_scroll()
@@ -188,6 +244,7 @@ try:
     screenshot("02b-in-app-confirmation")
     tap("返回")
     wait("等待任务")
+    assert find("开始加工").get("enabled") == "true", "Returning from a confirmation left the command disabled"
     tap("开始加工")
     tap("确认")
     tap("暂停")
@@ -215,12 +272,31 @@ try:
     assert find("下一页") is None and find("上一页") is None, "Short details were artificially paginated"
     screenshot("05b-full-width-details")
     tap("返回")
+    tap("任务库")
+    tap("导出任务"); wait("GRBL-demo.nc", exact=False)
+    adb("shell", "input", "keyevent", "4"); wait("已取消导出"); tap("收起提示")
+    assert find("导出任务").get("enabled") == "true"
+    tap("设备"); tap("维护"); tap("导出日志")
+    wait("grbl-diagnostics.txt", exact=False)
+    save = find("Save") or find("SAVE")
+    assert save is not None, "System save button missing"
+    a, b, c, d = map(int, re.findall(r"\d+", save.get("bounds")))
+    adb("shell", "input", "tap", str((a + c) // 2), str((b + d) // 2))
+    wait("已导出 · grbl-diagnostics.txt")
+    assert b"GRBL Tool Mobile 0.7.1" in adb("shell", "cat", "/sdcard/Download/grbl-diagnostics.txt")
+    screenshot("05c-export-complete")
+    tap("收起提示"); tap("关于"); wait("GRBL Tool Mobile 0.7.1"); tap("返回")
     tap("作品")
-    choose_bitmap("fake.png")
-    wait("图片内容无效")
+    choose_document("矢量 · SVG", "fake.svg")
+    wait("文档内容无效")
     screenshot("06-disguised-file-rejected")
     tap("收起提示")
     wait("GRBL-demo.nc")
+    stage_album("valid.png")
+    for _ in range(2):
+        open_album(); cancel_system_picker(); wait("GRBL-demo.nc"); tap("收起提示")
+    choose_bitmap("unsupported.gif")
+    wait("不支持此文件格式"); wait("GRBL-demo.nc"); tap("收起提示")
     choose_bitmap("valid.png")
     wait("valid.png")
     tap("生成任务")
@@ -359,7 +435,7 @@ try:
         assert find(label) is not None, label
     assert find("下一步") is None and find("上一步") is None
     screenshot("11-all-adjustments")
-    (OUT / "result.txt").write_text("PASS: fixed screens, bottom navigation, import allowlist, disguised-file rejection, valid PNG import, pause/resume, background completion, history, dirty input, compact 360x640 at 1.3 font scale, keyboard layout; zero app scrolling gestures, no app-owned platform dialogs/spinners, inline errors, app confirmations, uniform physical/pixel fit, desktop LaserGRBL contours, explicit travel display, desktop dithering, all artwork/device settings in one page, measured full-width details and history pagination, native OpenCV photo/QR modes, enabled 160ms transitions and motion capture\n")
+    (OUT / "result.txt").write_text("PASS: fixed screens, bottom navigation, import allowlist, disguised-file rejection, valid PNG import, pause/resume, background completion, history, dirty input, compact 360x640 at 1.3 font scale, keyboard layout; zero app scrolling gestures, no app-owned platform dialogs/spinners, inline errors, app confirmations, uniform physical/pixel fit, OpenCV contours, explicit travel display, desktop dithering, all artwork/device settings in one page, measured full-width details and history pagination, native OpenCV photo/QR modes, enabled 160ms transitions and motion capture; system album route with no DocumentsUI for bitmaps, repeated chooser returns, album cancellation, unsupported GIF preservation, export cancel/success and stable action availability\n")
 finally:
     (OUT / "logcat.txt").write_bytes(adb("logcat", "-d", "-t", "2500"))
     screenshot("last-screen")
