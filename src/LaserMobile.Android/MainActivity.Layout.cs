@@ -43,9 +43,9 @@ public sealed partial class MainActivity
         if (DeviceExecutionService.Current is null && SimulationService.Current is null) executions.RecoverInterrupted();
         if (savedInstanceState?.ContainsKey("pendingImport") == true)
         { pendingImport = (ImportKind)savedInstanceState.GetInt("pendingImport"); pendingImportRequest = savedInstanceState.GetInt("pendingImportRequest"); }
-        nextImportRequest = savedInstanceState?.GetInt("nextImportRequest", 200) ?? 200;
+        nextPickerRequest = savedInstanceState?.GetInt("nextPickerRequest", 200) ?? 200;
         if (savedInstanceState?.GetString("pendingExport") is { } file && file == Path.GetFileName(file) && file.StartsWith("export-", StringComparison.Ordinal) && file.EndsWith(".txt", StringComparison.Ordinal))
-        { pendingExportFile = Path.Combine(CacheDir!.AbsolutePath, file); pendingExportName = savedInstanceState.GetString("pendingExportName"); }
+        { pendingExportFile = Path.Combine(CacheDir!.AbsolutePath, file); pendingExportName = savedInstanceState.GetString("pendingExportName"); pendingExportRequest = savedInstanceState.GetInt("pendingExportRequest"); }
         quarterTurns = Math.Clamp(savedInstanceState?.GetInt("quarterTurns", 0) ?? 0, 0, 3);
         root = new LinearLayout(this) { Orientation = Orientation.Vertical, FocusableInTouchMode = true };
         root.SetPadding(Dp(8), Dp(28), Dp(8), Dp(8));
@@ -375,8 +375,8 @@ public sealed partial class MainActivity
     protected override void OnSaveInstanceState(Bundle outState)
     {
         if (pendingImport is { } kind) { outState.PutInt("pendingImport", (int)kind); outState.PutInt("pendingImportRequest", pendingImportRequest); }
-        outState.PutInt("nextImportRequest", nextImportRequest);
-        if (pendingExportFile is { } file) { outState.PutString("pendingExport", Path.GetFileName(file)); outState.PutString("pendingExportName", pendingExportName); }
+        outState.PutInt("nextPickerRequest", nextPickerRequest);
+        if (pendingExportFile is { } file) { outState.PutString("pendingExport", Path.GetFileName(file)); outState.PutString("pendingExportName", pendingExportName); outState.PutInt("pendingExportRequest", pendingExportRequest); }
         outState.PutInt("currentPage", currentPage); outState.PutInt("quarterTurns", quarterTurns); base.OnSaveInstanceState(outState);
     }
 }

@@ -66,12 +66,12 @@ public sealed partial class MainActivity
     {
         var screen = OpenPanel(title); long revision = panelRevision; var list = new LinearLayout(this) { Orientation = Orientation.Vertical }; screen.AddView(list, new LinearLayout.LayoutParams(-1, 0, 1));
         int page = 0, pageSize = 12; int columns = options.Count > 6 ? 2 : 1;
+        var rows = new List<LinearLayout>();
         Button previous = null!, next = null!;
         var navigation = Row(screen); navigation.Visibility = ViewStates.Gone;
         previous = Button(navigation, "上一页", () => { page--; Render(); return Task.CompletedTask; });
         next = Button(navigation, "下一页", () => { page++; Render(); return Task.CompletedTask; });
         Button(screen, "返回", () => { ClosePanel(); return Task.CompletedTask; });
-        var rows = new List<LinearLayout>();
         for (int i = 0; i < options.Count; i++)
         {
             if (i % columns == 0) rows.Add(Row(list));

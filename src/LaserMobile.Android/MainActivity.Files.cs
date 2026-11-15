@@ -12,15 +12,24 @@ namespace LaserMobile.AndroidApp;
 public sealed partial class MainActivity
 {
     private string? pendingExportFile, pendingExportName;
-    private int pendingImportRequest, nextImportRequest = 200;
+    private int pendingImportRequest, pendingExportRequest, nextPickerRequest = 200;
+    private bool exportBusy;
+    private int NextPickerRequest() => nextPickerRequest = nextPickerRequest >= 32000 ? 200 : nextPickerRequest + 1;
     private Task ChooseImport()
     {
-        if (importing || converting || pendingExportFile is not null)
+        if (importing || converting || exportBusy)
         { ShowInfo("请先完成或取消当前作品处理"); return Task.CompletedTask; }
         // A launcher return can leave an OEM picker outstanding. A new explicit import replaces it.
         if (pendingImport is not null)
         {
             int old = pendingImportRequest; pendingImport = null; pendingImportRequest = 0;
+#pragma warning disable CA1422
+            FinishActivity(old);
+#pragma warning restore CA1422
+        }
+        if (pendingExportFile is not null)
+        {
+            int old = pendingExportRequest; ClearPendingExport();
 #pragma warning disable CA1422
             FinishActivity(old);
 #pragma warning restore CA1422
@@ -33,7 +42,7 @@ public sealed partial class MainActivity
     private Task OpenPicker(ImportKind kind)
     {
         if (importing || converting || pendingImport is not null || pendingExportFile is not null) throw new InvalidOperationException("请先完成或取消当前导入、导出或生成");
-        pendingImport = kind; pendingImportRequest = nextImportRequest = nextImportRequest >= 32000 ? 200 : nextImportRequest + 1; ClearNotice();
+        pendingImport = kind; pendingImportRequest = NextPickerRequest(); ClearNotice();
         try
         {
             if (kind == ImportKind.Bitmap) LaunchPhotoPicker();
@@ -76,7 +85,7 @@ public sealed partial class MainActivity
         var job = requestCode == 21 ? selected ?? throw new InvalidOperationException("请先选择任务") : null;
         var snapshot = CurrentSession()?.Snapshot; var log = CurrentSession()?.Log ?? [];
         string file = Path.Combine(CacheDir!.AbsolutePath, "export-" + Guid.NewGuid().ToString("N") + ".txt");
-        pendingExportFile = file; pendingExportName = name;
+        pendingExportFile = file; pendingExportName = name; pendingExportRequest = NextPickerRequest(); exportBusy = true;
         try
         {
             await Task.Run(async () =>
@@ -87,13 +96,14 @@ public sealed partial class MainActivity
             if (IsDestroyed) { ClearPendingExport(); return; }
             using var intent = new Intent(Intent.ActionCreateDocument); intent.SetType("text/plain"); intent.AddCategory(Intent.CategoryOpenable); intent.PutExtra(Intent.ExtraTitle, name);
             intent.PutExtra("android.provider.extra.INITIAL_URI", Android.Net.Uri.Parse("content://com.android.externalstorage.documents/document/primary%3ADownload"));
-            LaunchPicker(intent, requestCode);
+            LaunchPicker(intent, pendingExportRequest);
         }
         catch { ClearPendingExport(); throw; }
+        finally { exportBusy = false; }
     }
     private void ClearPendingExport()
     {
-        string? file = pendingExportFile; pendingExportFile = pendingExportName = null;
+        string? file = pendingExportFile; pendingExportFile = pendingExportName = null; pendingExportRequest = 0;
         if (file is not null) { try { File.Delete(file); } catch (IOException) { } }
     }
     private async Task<ValidatedImport> ReadAndValidate(Android.Net.Uri uri, ImportKind kind)
@@ -128,7 +138,8 @@ public sealed partial class MainActivity
     {
         base.OnActivityResult(requestCode, resultCode, data);
         bool isImport = pendingImport is not null && requestCode == pendingImportRequest;
-        if (!isImport && requestCode is not (21 or 22)) return;
+        bool isExport = pendingExportFile is not null && requestCode == pendingExportRequest;
+        if (!isImport && !isExport) return;
         var expected = pendingImport;
         if (isImport) { pendingImport = null; pendingImportRequest = 0; }
         var uri = data?.Data;
@@ -165,8 +176,9 @@ public sealed partial class MainActivity
                 InvalidateDraft(); zoom = 1; panX = panY = 0; artwork.Text = $"{sourceName}\n已检查 · {source.Length / 1000.0:0.#} KB";
                 canvas.Invalidate(); jobCanvas?.Invalidate(); ShowPage(1); artworkTabs(0);
             }
-            else if (requestCode is 21 or 22)
+            else
             {
+                exportBusy = true;
                 string file = pendingExportFile ?? throw new IOException("导出内容已失效，请重新点击导出");
                 string name = pendingExportName ?? "文件";
                 await Task.Run(async () =>
@@ -183,7 +195,7 @@ public sealed partial class MainActivity
         }
         finally
         {
-            if (isImport) importing = false; else ClearPendingExport();
+            if (isImport) importing = false; else { exportBusy = false; ClearPendingExport(); }
             if (!IsDestroyed) UpdateActionAvailability();
         }
     }

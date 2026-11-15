@@ -26,15 +26,15 @@ public static class ImportFormats
     public static string PhotoName(string? displayName, string? mimeType)
     {
         string name = string.IsNullOrWhiteSpace(displayName) ? "photo" : displayName;
-        if (string.IsNullOrEmpty(Path.GetExtension(name)))
+        string? extension = mimeType?.Split(';')[0].Trim().ToLowerInvariant() switch
         {
-            string extension = mimeType?.Split(';')[0].Trim().ToLowerInvariant() switch
-            {
-                "image/png" => ".png", "image/jpeg" => ".jpg", "image/webp" => ".webp",
-                "image/bmp" or "image/x-ms-bmp" => ".bmp", _ => throw new FormatException("相册图片需为 PNG、JPG、WebP 或 BMP 格式")
-            };
-            name += extension;
-        }
+            "image/png" => ".png", "image/jpeg" => ".jpg", "image/webp" => ".webp",
+            "image/bmp" or "image/x-ms-bmp" => ".bmp", _ => null
+        };
+        string actual = Path.GetExtension(name).ToLowerInvariant();
+        if (string.IsNullOrEmpty(actual)) name += extension ?? throw new FormatException("相册图片需为 PNG、JPG、WebP 或 BMP 格式");
+        else if (extension is not null && actual != extension && !(extension == ".jpg" && actual == ".jpeg"))
+            throw new FormatException("相册图片类型与扩展名不一致");
         CheckMetadata(name, mimeType, ImportKind.Bitmap); return name;
     }
     public static ImportFormat CheckMetadata(string name, string? mimeType, ImportKind expected)
