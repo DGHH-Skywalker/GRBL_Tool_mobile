@@ -310,13 +310,13 @@ try:
     choose_bitmap("unsupported.gif")
     wait("不支持此文件格式"); wait("GRBL-demo.nc"); tap("收起提示")
     choose_bitmap("valid.png")
-    wait("valid.png")
+    wait("已检查 ·")
     tap("生成任务")
     wait("行 ·", timeout=40)
     no_scroll()
     screenshot("07-supported-file-import")
     choose_bitmap("complex.png")
-    wait("complex.png")
+    wait("已检查 ·")
     tap("加工参数")
     assert find("下一步") is None and find("上一步") is None
     for label in ("加工宽度 mm", "光栅行距 mm", "加工进给 mm/min", "加工最大功率 S", "Gamma", "二值阈值（0–255）", "最大图像宽度 mm", "最大图像高度 mm", "最大处理宽度 px", "最大处理高度 px", "轮廓细节（1–10）", "照片去噪长度 px"):
