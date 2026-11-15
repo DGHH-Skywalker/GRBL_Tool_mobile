@@ -333,7 +333,7 @@ public sealed partial class MainActivity
         foreach (var job in jobs.Skip(libraryIndex * libraryCount).Take(libraryCount))
         {
             var card = new LinearLayout(this) { Orientation = Orientation.Vertical }; libraryCards.AddView(card, new LinearLayout.LayoutParams(-1, -2));
-            Button(card, job.Name, async () => { await LoadSaved(job.Id); ShowPage(1); artworkTabs(0); }); Label(card, $"{job.CreatedAt.ToLocalTime():MM-dd HH:mm} · {job.Hash[..12]}", 12, 1);
+            Button(card, job.Name, async () => { long generation = artworkLoadGeneration + 1; await LoadSaved(job.Id); if (generation == artworkLoadGeneration) { ShowPage(1); artworkTabs(0); } }); Label(card, $"{job.CreatedAt.ToLocalTime():MM-dd HH:mm} · {job.Hash[..12]}", 12, 1);
         }
         if (jobs.Count == 0) Label(libraryCards, "生成任务后显示在这里");
         }

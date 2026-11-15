@@ -172,9 +172,17 @@ def choose_document(category, name):
     wait(name, timeout=40, exact=False); tap(name, exact=False)
 
 
+def leave_system_picker(message):
+    # DocumentsUI Back first leaves a folder or keyboard before it cancels the activity.
+    for _ in range(5):
+        adb("shell", "input", "keyevent", "4"); time.sleep(.4)
+        if any(n.get("package") == APP for n in tree().iter("node")):
+            wait(message); return
+    raise AssertionError("System picker did not return to the application: " + message)
+
+
 def cancel_system_picker():
-    adb("shell", "input", "keyevent", "4")
-    wait("已取消导入")
+    leave_system_picker("已取消导入")
     assert find("导入作品").get("enabled") == "true"
 
 
@@ -232,6 +240,9 @@ try:
         assert find("导入作品").get("enabled") == "true"
     tap("导入作品"); wait("矢量 · SVG"); adb("shell", "input", "keyevent", "4")
     wait("导入作品", exact=True)
+    stage_album("valid.png"); open_album(); cancel_system_picker()
+    screenshot("01e-album-cancel-and-reopen")
+    tap("收起提示")
     tap("设备")
     tap("体验完整演示")
     wait("GRBL-demo.nc")
@@ -274,7 +285,7 @@ try:
     tap("返回")
     tap("任务库")
     tap("导出任务"); wait("GRBL-demo.nc", exact=False)
-    adb("shell", "input", "keyevent", "4"); wait("已取消导出"); tap("收起提示")
+    leave_system_picker("已取消导出"); tap("收起提示")
     assert find("导出任务").get("enabled") == "true"
     tap("设备"); tap("维护"); tap("导出日志")
     wait("grbl-diagnostics.txt", exact=False)
@@ -293,7 +304,7 @@ try:
     tap("收起提示")
     wait("GRBL-demo.nc")
     stage_album("valid.png")
-    for _ in range(2):
+    for _ in range(1):
         open_album(); cancel_system_picker(); wait("GRBL-demo.nc"); tap("收起提示")
     choose_bitmap("unsupported.gif")
     wait("不支持此文件格式"); wait("GRBL-demo.nc"); tap("收起提示")
