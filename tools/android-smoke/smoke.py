@@ -7,6 +7,7 @@ import struct
 import zlib
 import shutil
 import base64
+import shlex
 import xml.etree.ElementTree as ET
 
 APP = "io.github.dghhskywalker.grbltoolmobile"
@@ -127,12 +128,12 @@ def fixture_files():
 
 def stage_album(name):
     # One test photo at a time: Android Photo Picker exposes dates instead of filenames.
-    adb("shell", "content", "delete", "--uri", "content://media/external/images/media", "--where", "relative_path='Pictures/GRBLTest/'")
+    adb("shell", shlex.join(["content", "delete", "--uri", "content://media/external/images/media", "--where", "relative_path='Pictures/GRBLTest/'"]))
     adb("shell", "mkdir", "-p", "/sdcard/Pictures/GRBLTest")
     adb("push", str(OUT / "fixtures" / name), "/sdcard/Pictures/GRBLTest/" + name)
     adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", "file:///sdcard/Pictures/GRBLTest/" + name)
     for _ in range(40):
-        result = adb("shell", "content", "query", "--uri", "content://media/external/images/media", "--projection", "_display_name", "--where", "relative_path='Pictures/GRBLTest/'").decode()
+        result = adb("shell", shlex.join(["content", "query", "--uri", "content://media/external/images/media", "--projection", "_display_name", "--where", "relative_path='Pictures/GRBLTest/'"])).decode()
         if name in result: return
         time.sleep(.25)
     raise AssertionError("Album fixture was not indexed: " + name + " " + result)
