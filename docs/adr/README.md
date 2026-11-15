@@ -15,4 +15,6 @@
 
 - [0010：OpenCV 保真轮廓、实际空间排版与短动画](0010-opencv-fidelity-and-adaptive-layout.md)。
 
+- [0011：系统相册导入与稳定按钮交互](0011-photo-picker-and-stable-actions.md)。
+
 这些记录描述当前已实现边界，详细目标见完整方案。

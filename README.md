@@ -2,17 +2,19 @@
 
 C# / .NET for Android 原生激光雕刻控制工具。支持 USB OTG 连接 GRBL 1.1，独立前台执行、G-code 工作流、位图与 SVG 转换。
 
-## 0.7 OpenCV 保真轮廓与全局交互优化
+## 0.7.1 系统相册与按钮交互修复
 
-[APK 镜像直链](https://gh-proxy.com/https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/releases/download/v0.7.0-demo/GRBL-Tool-Mobile-0.7.0.apk) · [下载与校验说明](docs/DOWNLOADS.md) · [120 项测试与 Android 交互验收](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43551159299)
+[APK 镜像直链](https://gh-proxy.com/https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/releases/download/v0.7.1-demo/GRBL-Tool-Mobile-0.7.1.apk) · [下载与校验说明](docs/DOWNLOADS.md) · [124 项测试与 Android 交互验收](https://github.com/DGHH-Skywalker/GRBL_Tool_mobile/actions/runs/43771416430)
 
 从上面的 APK 镜像直链下载并安装。Android 10 及以上、ARM64 或 x86_64，打开设备页点击“体验完整演示”。[完整体验与安装说明](docs/DEMO.md)。
+
+位图导入直接使用系统照片选择器，旧系统使用相册；SVG、G-code 和设备 JSON 保留文档接口。取消、错误与导出完成均有明确反馈。选项页保持稳定按钮，统一异步忙碌状态，支持取消生成，隔离旧选择器和旧任务读取回调。
 
 照片轮廓采用 OpenCV 的局部对比增强、去噪、Canny 和连通域过滤；二维码与图文通过 Clipper2 精确像素区域并集保留直角、孔洞和单像素模块。提供智能识别、照片细节、图文保真和局部阈值四种策略，继续复用 LaserGRBL/Cyotek 灰度、阈值和八套抖动。
 
 设备参数和维护集中一页，详情按实际宽高排版，历史同屏可容纳时隐藏翻页。全局加入 160 ms 原生过渡动画和按钮水波纹，历史加载移到后台。USB 诊断展示全部原始设备、VID/PID、接口及驱动匹配结果，支持兼容未知设备的驱动映射和可配置 DTR/RTS。
 
-[全局开源复用审查](docs/OPEN_SOURCE_AUDIT.md) · [轮廓与交互设计](docs/adr/0010-opencv-fidelity-and-adaptive-layout.md) · [移动界面规范](docs/MOBILE_UI.md)。保留尺寸/像素上限、等比例缩小、底部导航和文件内容白名单。
+[相册与按钮修复](docs/adr/0011-photo-picker-and-stable-actions.md) · [全局开源复用审查](docs/OPEN_SOURCE_AUDIT.md) · [轮廓与交互设计](docs/adr/0010-opencv-fidelity-and-adaptive-layout.md) · [移动界面规范](docs/MOBILE_UI.md)。保留尺寸/像素上限、等比例缩小、底部导航和文件内容白名单。
 
 保留实际工作坐标预检、参数修改失效、人工就绪、字符流控、进度节流、缓存预览、任务期唤醒锁与通知暂停。完整演示复用 USB 会话、任务和历史链路。
 

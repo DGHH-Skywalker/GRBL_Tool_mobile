@@ -26,3 +26,5 @@
 0.6 直接导入 LaserGRBL 固定提交 `1f9337b3af27133f8b1696e41cc110f2af74d04f` 的 CsPotrace 核心、Cyotek ARGB/扩散基类与八套确定性核，适配 ImageTransform 和 GrblFile 的灰度、阈值、整数 S、连续同功率段与白区跳过。来源清单、许可证和改动逐项记录在 third-party/manifest.json；原始许可存于 third-party/notices。框架依赖锁保持原样。接入与验证说明见 [ADR 0009](adr/0009-desktop-lasergrbl-cam-and-single-page-forms.md)。
 
 0.7 引入 OpenCV 4.13 / OpenCvSharp 4.13.0.20260602；Linux 使用 Sdcb mini 4.13.0.45，Android 在 Actions 复用同一精简补丁并从固定源码构建 16 KB 原生库。图文采用现有 Clipper2 的精确像素矩形并集。ZXing.Net 只加入测试，验证完整二维码还原与解码。参考项目、原生包实际检查、源码版本、许可证和验收边界见 [ADR 0010](adr/0010-opencv-fidelity-and-adaptive-layout.md)。
+
+0.7.1 位图选择直接复用 Android Photo Picker / 旧版相册 ACTION_PICK，保持现有 ContentResolver、Skia 校验、原生 Views 和 Task；无新增运行时依赖。采用 AOSP MediaProvider 的 Photo Picker 作为真实 UI 回归入口，避免自行实现相册。参考与验证方案见 [ADR 0011](adr/0011-photo-picker-and-stable-actions.md)。
